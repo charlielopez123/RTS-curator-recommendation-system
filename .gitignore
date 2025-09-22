@@ -1,0 +1,24 @@
+# --- Python build/cache ---
+__pycache__/
+
+# --- Virtual envs ---
+.venv/
+venv/
+
+# --- Packaging / installers ---
+build/
+dist/
+*.egg-info/
+
+# --- Editors / OS noise ---
+.vscode/*
+!.vscode/settings.json
+
+# --- Env & secrets ---
+.env
+
+# --- Data & models (keep small samples only) ---
+data/**
+models/**
+!data/.gitkeep
+!models/.gitkeep

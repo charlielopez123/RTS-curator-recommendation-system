@@ -1,0 +1,28 @@
+[project]
+name = "cts-recommender"
+version = "0.1.0"
+description = "Contextual movie recommender (CTS) — codebase"
+readme = "README.md"
+requires-python = ">=3.9,<3.13"
+authors = [{ name = "Theo Maetz", email = "theo.maetz@gmail.com" }]
+dependencies = []
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cts_recommender"]
