@@ -22,3 +22,6 @@ data/**
 models/**
 !data/.gitkeep
 !models/.gitkeep
+
+!data/reference/
+!data/reference/.gitkeep
