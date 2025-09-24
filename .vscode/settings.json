@@ -4,6 +4,18 @@
   "jupyter.notebookFileRoot": "${workspaceFolder}",
   "python.envFile": "${workspaceFolder}/.vscode/.env.notebooks",
   "cSpell.words": [
-    "rdata"
-  ]
+    "categorisation",
+    "cinéma",
+    "classiques",
+    "CLASSKEYS",
+    "isin",
+    "Noël",
+    "nonmovie",
+    "Personnes",
+    "Ramdam",
+    "rdata",
+    "spéciale",
+    "tmdb"
+  ],
+  "makefile.configureOnOpen": false
 }

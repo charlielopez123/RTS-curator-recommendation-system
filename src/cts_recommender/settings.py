@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     # ---- integrations ----
     tmdb: Optional[TMDBSettings] = None  # <-- DO NOT instantiate here
 
-@lru_cache
+
 def get_settings() -> Settings:
     """Singleton accessor to avoid reparsing .env on every import."""
     return Settings()

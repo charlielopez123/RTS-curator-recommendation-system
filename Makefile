@@ -1,7 +1,9 @@
 # ---- Config ---------------------------------------------------------------
 RDATA ?= data/raw/original_R_dataset.RData
-OUT   ?= data/processed/programming.parquet
+OUT_PROCESSED ?= data/processed/programming.parquet
+OUT_ENRICHED ?= data/processed/programming_enriched.parquet
 APP   ?= cts-reco-prepare-programming
+LOG_LEVEL ?= INFO
 
 # ---- Defaults -------------------------------------------------------------
 .SHELLFLAGS := -eu -o pipefail -c
@@ -19,20 +21,20 @@ bootstrap: ## One-time dev setup
 	uv run pre-commit install
 
 lint: ## Lint
-	uv run ruff check .
+	LOG_LEVEL=$(LOG_LEVEL)uv run ruff check .
 
 fmt: ## Format
-	uv run ruff format .
+	LOG_LEVEL=$(LOG_LEVEL) uv run ruff format .
 
 fix: ## Lint with fixes
-	uv run ruff check --fix .
+	LOG_LEVEL=$(LOG_LEVEL) uv run ruff check --fix .
 
 test: ## Run tests
-	uv run pytest -q
+	LOG_LEVEL=$(LOG_LEVEL) uv run pytest -q
 
 prepare-programming: ## Build programming parquet from RData
-	mkdir -p $(dir $(OUT))
-	uv run $(APP) --rdata $(RDATA) --out $(OUT)
+	mkdir -p $(dir $(OUT_PROCESSED))
+	LOG_LEVEL=$(LOG_LEVEL) uv run $(APP) --rdata $(RDATA) --out_processed $(OUT_PROCESSED) --out_enriched $(OUT_ENRICHED)
 # If no console script, use:
 #	uv run python -m cts_recommender.cli.preprocessing_programming --rdata $(RDATA) --out $(OUT)
 
