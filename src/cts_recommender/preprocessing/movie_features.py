@@ -81,4 +81,4 @@ def enrich_programming_with_movie_metadata(df: pd.DataFrame) -> pd.DataFrame:
     tqdm.pandas(desc="Extracting movie features...")
     movies_df = movies_df.progress_apply(enrich_movie_feature_row, axis=1)
 
-    return df
+    return movies_df

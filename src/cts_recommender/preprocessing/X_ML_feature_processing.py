@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import logging
 from cts_recommender import RTS_constants
+from cts_recommender.features.schemas import ML_FEATURES
 
 logger = logging.getLogger(__name__)
 
@@ -101,10 +102,14 @@ def build_X_features(processed_df: pd.DataFrame, df_enriched: pd.DataFrame) -> p
     nonmovie_df.loc[:, 'is_movie'] = False
     df_enriched.loc[:, 'is_movie'] = True
 
-    # Ensure both DataFrames have the same columns in the same order
-    df_enriched = df_enriched[nonmovie_df.columns] 
-    
+    # Select only ML features in the correct order for both DataFrames
+    # This ensures consistent column ordering for sklearn models
+    available_features = [col for col in ML_FEATURES if col in nonmovie_df.columns and col in df_enriched.columns]
+
+    nonmovie_df = nonmovie_df[available_features]
+    df_enriched = df_enriched[available_features]
+
     # full_df includes all movies and non-movies
-    full_df = pd.concat([nonmovie_df, df_enriched]) 
+    full_df = pd.concat([nonmovie_df, df_enriched])
 
     return full_df

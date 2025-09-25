@@ -35,3 +35,35 @@ PROGRAMMING_RENAME_MAP: dict[str, str] = {
     "PDM-%": "pdm",
 }
 
+# Feature categories for ML model training (audience ratings regression)
+# Order is important for sklearn models - features must always be in the same order
+
+# Base programming features (always first)
+BASE_PROGRAMMING_FEATURES: tuple[str, ...] = (
+    "rt_m", "pdm", "hour", "weekday", "is_weekend", "duration_min",
+    "season", "public_holiday"
+)
+
+# Categorical features that will be encoded
+CATEGORICAL_FEATURES: tuple[str, ...] = (
+    "channel", "class_key", "original_language"
+)
+
+# Numerical TMDB features
+TMDB_NUMERICAL_FEATURES: tuple[str, ...] = (
+    "popularity", "revenue", "vote_average"
+)
+
+# Boolean derived features
+BOOLEAN_FEATURES: tuple[str, ...] = (
+    "adult", "missing_release_date", "missing_tmdb", "is_movie"
+)
+
+# Final ordered feature set for ML models
+ML_FEATURES: tuple[str, ...] = (
+    BASE_PROGRAMMING_FEATURES +
+    CATEGORICAL_FEATURES +
+    TMDB_NUMERICAL_FEATURES +
+    BOOLEAN_FEATURES
+)
+
