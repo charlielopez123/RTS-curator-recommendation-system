@@ -1,5 +1,4 @@
-from dataclasses import dataclass
-from typing import Mapping, Sequence
+# Schema definitions for ML features
 
 # Original RData programming table column order (as delivered)
 ORIGINAL_PROGRAMMING_COLUMNS: tuple[str, ...] = (
@@ -46,7 +45,7 @@ BASE_PROGRAMMING_FEATURES: tuple[str, ...] = (
 
 # Categorical features that will be encoded
 CATEGORICAL_FEATURES: tuple[str, ...] = (
-    "channel", "class_key", "original_language"
+    "channel", "original_language"
 )
 
 # Numerical TMDB features
@@ -59,11 +58,20 @@ BOOLEAN_FEATURES: tuple[str, ...] = (
     "adult", "missing_release_date", "missing_tmdb", "is_movie"
 )
 
-# Final ordered feature set for ML models
+# Computed numerical features
+COMPUTED_FEATURES: tuple[str, ...] = (
+    "movie_age",
+)
+
+# Final ordered feature set for ML models (excluding dynamic genre columns)
+# Note: Genre columns (genre_*) are added dynamically during feature processing
 ML_FEATURES: tuple[str, ...] = (
     BASE_PROGRAMMING_FEATURES +
     CATEGORICAL_FEATURES +
     TMDB_NUMERICAL_FEATURES +
-    BOOLEAN_FEATURES
+    BOOLEAN_FEATURES +
+    COMPUTED_FEATURES
 )
+
+TARGET_FEATURE: str = "rt_m"
 

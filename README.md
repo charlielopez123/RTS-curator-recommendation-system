@@ -166,47 +166,12 @@ The system includes Swiss broadcasting-specific constants in `RTS_constants.py`:
 - **Competitor Codes**: Classification codes for competitor content
 - **Special Movie Names**: Titles requiring description-based extraction
 
-## 🔄 Data Pipeline Architecture
+## 📚 Documentation
 
-### Stage 1: Programming Data Preprocessing
-
-**Input**: Original R programming dataset
-**Output**: Clean, feature-engineered programming data
-
-**Process**:
-1. Load R data file and validate expected columns
-2. Filter for target audience (Personnes 3+) and activity type (Overnight+7)
-3. Convert data types (dates, durations, numeric targets)
-4. Feature engineering:
-   - Temporal features (hour, weekday, weekend flags)
-   - Duration in minutes
-   - Holiday detection using reference data
-
-### Stage 2: TMDB Metadata Enrichment
-
-**Input**: Preprocessed programming data
-**Output**: Movie records enriched with TMDB metadata
-
-**Process**:
-1. Extract movies using RTS classification keys
-2. Handle special title cases (use description when needed)
-3. Search TMDB for best matching movie IDs
-4. Extract comprehensive movie features:
-   - Basic info (adult rating, language, popularity)
-   - Financial data (revenue, vote averages)
-   - Content metadata (genres, release dates)
-   - Missing data indicators
-
-### Stage 3: Feature Preparation
-
-**Input**: Preprocessed + enriched datasets
-**Output**: ML-ready feature matrix
-
-**Process**:
-1. Merge movie and non-movie content
-2. Handle missing values with appropriate defaults
-3. Create binary indicators for missing TMDB data
-4. Ensure consistent feature schema across all content types
+- **[Pipeline Architecture](docs/PIPELINE.md)**: Detailed explanation of the 3-stage data processing pipeline
+- **[CLI Reference](docs/CLI.md)**: Command-line interface usage and examples
+- **[API Reference](docs/API.md)**: Function signatures and module documentation
+- **[Development Guide](docs/DEVELOPMENT.md)**: Setup, testing, and contribution guidelines
 
 ## 📊 Usage Examples
 

@@ -34,14 +34,12 @@ def build_X_features(processed_df: pd.DataFrame, df_enriched: pd.DataFrame) -> p
 
 
     # Feature preprocessing for handling missing values
-    logger.info(nonmovie_df.columns)
-    logger.info(df_enriched.columns)
     nonmovie_df.loc[:, 'adult'] = False
     df_enriched['adult'] = np.where(
         df_enriched['adult'].isna(),
         False,
         df_enriched['adult']
-    )
+    ).astype(bool)
     nonmovie_df.loc[:, 'original_language'] = 'unknown'
     df_enriched['original_language'] = np.where(
         df_enriched['original_language'].isna(),
@@ -53,7 +51,7 @@ def build_X_features(processed_df: pd.DataFrame, df_enriched: pd.DataFrame) -> p
     # Add empty genres list for non-movies
     nonmovie_df.loc[:, 'genres'] = [[] for _ in range(len(nonmovie_df))]
     df_enriched['genres'] = df_enriched['genres'].apply(
-        lambda x: x if isinstance(x, list) else []
+        lambda x: x.tolist() if isinstance(x, np.ndarray) else (x if isinstance(x, list) else [])
     )
 
     # Release date
@@ -65,13 +63,10 @@ def build_X_features(processed_df: pd.DataFrame, df_enriched: pd.DataFrame) -> p
         '1900-01-01',
         df_enriched['release_date']
     )
-    df_enriched.loc[:, 'missing_release_date'] = np.where(
-        df_enriched['release_date'].isna(),
-        False,
-        True
+    df_enriched.loc[:, 'missing_release_date'] = (
+        df_enriched['release_date'].isna() | (df_enriched['release_date'] == '')
     )
-    df_enriched.loc[:, 'missing_release_date'] = df_enriched.loc[:, 'missing_release_date'].apply(lambda s: False if s == '' else True)
-    df_enriched.loc[:, 'release_date'] = df_enriched.loc[:, 'release_date'].apply(lambda s: '1900-01-01' if s == '' else s)
+    df_enriched.loc[:, 'release_date'] = df_enriched['release_date'].fillna('1900-01-01').replace('', '1900-01-01')
 
     # Missing Revenue put as 0
     nonmovie_df.loc[:, 'revenue'] = 0
@@ -102,14 +97,49 @@ def build_X_features(processed_df: pd.DataFrame, df_enriched: pd.DataFrame) -> p
     nonmovie_df.loc[:, 'is_movie'] = False
     df_enriched.loc[:, 'is_movie'] = True
 
-    # Select only ML features in the correct order for both DataFrames
+    # Select only ML features that exist in both datasets plus processing columns
     # This ensures consistent column ordering for sklearn models
     available_features = [col for col in ML_FEATURES if col in nonmovie_df.columns and col in df_enriched.columns]
+    # Add columns needed for processing (will be processed/dropped later)
+    processing_features = available_features + ['genres', 'release_date']
 
-    nonmovie_df = nonmovie_df[available_features]
-    df_enriched = df_enriched[available_features]
+    nonmovie_df = nonmovie_df[processing_features]  # nonmovie_df now has all processing features
+    df_enriched = df_enriched[processing_features]  # enriched_df has all features
 
     # full_df includes all movies and non-movies
     full_df = pd.concat([nonmovie_df, df_enriched])
+
+    # One-hot encoding for categorical features
+    full_df.loc[:, 'genre_names'] = full_df['genres'].apply(lambda lst: [d['name'] for d in lst])
+    exploded = full_df.explode(['genre_names'])
+    dummies = pd.get_dummies(
+        exploded["genre_names"],
+        prefix="genre"
+    )
+    genre_dummies = dummies.groupby(level=0).sum()
+    full_df = pd.concat([full_df, genre_dummies], axis=1)
+
+    # Drop the intermediate genre columns - we now have the one-hot encoded versions
+    full_df = full_df.drop(columns=['genres', "genre_names"])
+
+    full_df["release_date_dt"] = pd.to_datetime(
+        full_df["release_date"],
+        format="%Y-%m-%d",
+    )
+
+    full_df['movie_age'] = pd.Timestamp('today').year - pd.to_datetime(full_df['release_date'], format='%Y-%m-%d').dt.year
+    # Drop intermediate columns not needed for modeling
+    full_df = full_df.drop(columns=['release_date', 'release_date_dt'])
+
+    # Convert all bool columns → int (0/1)
+    bool_cols = full_df.select_dtypes(include='bool').columns
+    full_df[bool_cols] = full_df[bool_cols].astype(int)
+
+    # Check for any remaining NaNs
+    num_nans = full_df.isna().sum().sum()
+    assert num_nans == 0, f"DataFrame contains {num_nans} NaN values after processing."
+    if num_nans > 0:
+        logger.warning(f"DataFrame contains {num_nans} NaN values after processing. Please check the data.")
+        logger.warning(full_df.isna().sum())
 
     return full_df
