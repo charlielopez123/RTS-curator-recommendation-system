@@ -13,6 +13,8 @@ dependencies = [
     "pyreadr>=0.5.3",
     "requests>=2.32.5",
     "tqdm>=4.67.1",
+    "scikit-learn>=1.6.1",
+    "scipy>=1.11.0",
 ]
 
 [build-system]
@@ -46,4 +48,5 @@ notebooks = [
 
 [project.scripts]
 cts-reco-prepare-programming = "cts_recommender.cli.prepare_programming:main"
+cts-reco-train-audience-ratings = "cts_recommender.cli.train_audience_ratings:main"
 

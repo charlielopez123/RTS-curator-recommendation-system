@@ -39,7 +39,7 @@ PROGRAMMING_RENAME_MAP: dict[str, str] = {
 
 # Base programming features (always first)
 BASE_PROGRAMMING_FEATURES: tuple[str, ...] = (
-    "rt_m", "pdm", "hour", "weekday", "is_weekend", "duration_min",
+    "rt_m", "hour", "weekday", "is_weekend", "duration_min",
     "season", "public_holiday"
 )
 

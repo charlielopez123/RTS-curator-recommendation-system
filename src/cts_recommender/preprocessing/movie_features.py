@@ -1,10 +1,13 @@
 import pandas as pd
 import numpy as np
-from cts_recommender.adapters.tmdb import tmdb
-from cts_recommender import RTS_constants
 from pathlib import Path
 from tqdm.auto import tqdm
 import logging
+
+from cts_recommender.adapters.tmdb import tmdb
+from cts_recommender import RTS_constants
+from cts_recommender.io.readers import read_parquet
+
 
 
 logger = logging.getLogger(__name__)
@@ -15,7 +18,7 @@ tmdb_api: tmdb.TMDB_API = tmdb.TMDB_API()
 
 # Load the preprocessed programming file into a DataFrame
 def load_processed_programming(data_path: Path) -> pd.DataFrame:
-    df = pd.read_parquet(data_path)
+    df = read_parquet(data_path)
     return df
 
 def search_movie_id_row(row: pd.Series) -> pd.Series:

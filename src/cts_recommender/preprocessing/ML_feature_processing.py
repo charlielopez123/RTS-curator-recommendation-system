@@ -4,13 +4,14 @@ import numpy as np
 import logging
 from cts_recommender import RTS_constants
 from cts_recommender.features.schemas import ML_FEATURES
+from cts_recommender.io.readers import read_parquet
 
 logger = logging.getLogger(__name__)
 
 # Load the preprocessed programming file into a DataFrame
 def load_processed_and_enriched_programming(data_path_processed: Path, data_path_enriched: Path) -> pd.DataFrame:
-    processed_df = pd.read_parquet(data_path_processed)
-    enriched_df = pd.read_parquet(data_path_enriched)
+    processed_df = read_parquet(data_path_processed)
+    enriched_df = read_parquet(data_path_enriched)
     return processed_df, enriched_df
 
 

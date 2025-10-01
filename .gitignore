@@ -26,3 +26,6 @@ models/**
 
 !data/reference/
 !data/reference/.gitkeep
+
+# --- Claude related docs ---
+.claude

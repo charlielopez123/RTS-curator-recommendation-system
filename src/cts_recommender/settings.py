@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     env: Literal["dev", "staging", "prod"] = "dev"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
+    # ---- reproducibility ----
+    random_seed: int = 42
+
     model_config = SettingsConfigDict(
         env_file = ".env",
         env_prefix="APP_",      # APP_ENV, APP_LOG_LEVEL, etc.
