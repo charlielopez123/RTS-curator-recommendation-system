@@ -29,3 +29,4 @@ models/**
 
 # --- Claude related docs ---
 .claude
+CLAUDE.md

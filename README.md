@@ -107,10 +107,10 @@ RTS-curator-recommendation-system/
 
 5. **Set up data directories**
    ```bash
-   mkdir -p data/{raw,interim,processed,reference}
+   mkdir -p data/{raw,processed,reference}
 
    # Add your holidays reference file
-   echo '[]' > data/reference/holidays.json  # or add actual holidays data
+   echo '{}' > data/reference/holidays.json  # or add actual holidays data
    ```
 
 ### Running the Data Pipeline

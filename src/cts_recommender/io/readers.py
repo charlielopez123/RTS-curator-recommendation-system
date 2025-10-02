@@ -18,7 +18,10 @@ def read_json(path: Path):
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
     
-
 def read_parquet(path: Path) -> pd.DataFrame:
     _ensure_exists(path)
     return pd.read_parquet(path)
+
+def read_csv(path: Path, **kwargs) -> pd.DataFrame:
+    _ensure_exists(path)
+    return pd.read_csv(path, encoding="utf-8", **kwargs)

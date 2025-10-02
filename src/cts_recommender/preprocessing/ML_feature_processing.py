@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import logging
 from cts_recommender import RTS_constants
-from cts_recommender.features.schemas import ML_FEATURES
+from cts_recommender.features.TV_programming_Rdata_schema import ML_FEATURES
 from cts_recommender.io.readers import read_parquet
 
 logger = logging.getLogger(__name__)

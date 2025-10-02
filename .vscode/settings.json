@@ -2,6 +2,9 @@
   "python.defaultInterpreterPath": ".venv/bin/python",
   "python.terminal.activateEnvironment": true,
   "jupyter.notebookFileRoot": "${workspaceFolder}",
+  "jupyter.runStartupCommands": [
+    "%cd ${workspaceFolder}"
+  ],
   "python.envFile": "${workspaceFolder}/.vscode/.env.notebooks",
   "cSpell.words": [
     "categorisation",
