@@ -73,7 +73,6 @@ def enrich_programming_with_movie_metadata(df: pd.DataFrame) -> pd.DataFrame:
         movies_df['description'],                 # value if True
         movies_df['title']                        # value if False
     )
-    movies_df = movies_df.drop(columns=['description']) # description column can now be removed
 
     ## TMDB API search of movie metadata
     tqdm.pandas(desc="Searching movie IDs...")

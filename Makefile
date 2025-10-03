@@ -6,6 +6,7 @@ OUT_ENRICHED ?= data/processed/programming_enriched.parquet
 ML_FEATURES_PATH ?= data/processed/ML_features.parquet
 MODEL_OUTPUT ?= data/models/audience_ratings_model.joblib
 OUT_WHATSON ?= data/processed/whatson.parquet
+OUT_WHATSON_CATALOG ?= data/processed/whatson_catalogue.parquet
 APP   ?= cts-reco-prepare-programming
 LOG_LEVEL ?= INFO
 
@@ -48,7 +49,7 @@ train-audience-ratings: ## Train audience ratings model
 #	uv run python -m cts_recommender.cli.train_audience_ratings --ml_features $(ML_FEATURES_PATH) --model_output $(MODEL_OUTPUT)
 
 extract-whatson: ## Extract Whatson data into parquet file
-	LOG_LEVEL=$(LOG_LEVEL) uv run cts-reco-extract-whatson --file_path $(WHATSON_DATA) --out_file $(OUT_WHATSON)
+	LOG_LEVEL=$(LOG_LEVEL) uv run cts-reco-extract-whatson --file_path $(WHATSON_DATA) --out_file $(OUT_WHATSON_CATALOG)
 
 clean: ## Clean caches
 	rm -rf .pytest_cache .ruff_cache dist build *.egg-info
