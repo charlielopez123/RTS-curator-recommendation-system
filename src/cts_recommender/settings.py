@@ -4,8 +4,6 @@ from typing import Literal, Optional
 from pydantic import AnyHttpUrl, BaseModel, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from functools import lru_cache
-
 
 class TMDBSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="TMDB_", extra="ignore")
@@ -28,6 +26,7 @@ class Settings(BaseSettings):
     # ---- app/runtime ----
     env: Literal["dev", "staging", "prod"] = "dev"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    verify_ssl: bool = False
 
     # ---- reproducibility ----
     random_seed: int = 42

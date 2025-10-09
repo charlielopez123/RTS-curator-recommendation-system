@@ -8,7 +8,7 @@ FeatureSpec = Dict[str, tuple[str, Optional[Callable[[Any], Any]], Any]]
 
 BASIC_FEATURES: FeatureSpec = {
     "adult":               ("adult",               bool,                         False),
-    "original_language":   ("original_language",   str,                          None),
+    "original_language":   ("original_language",   str,                          'unknown'),
     "popularity":          ("popularity",          float,                        0.0),
     "release_date":        ("release_date",        str,                          None),
     "revenue":             ("revenue",             int,                          0),

@@ -8,7 +8,7 @@ def _to_date(x: object) -> date:
     if isinstance(x, datetime):
         return x.date()
     if isinstance(x, str):
-        # expect ISO (YYYY-MM-DD). Adjust if your JSON uses another format.
+        # expect ISO (YYYY-MM-DD)
         return date.fromisoformat(x)
     raise TypeError(f"Unsupported date-like value: {type(x)}")
 

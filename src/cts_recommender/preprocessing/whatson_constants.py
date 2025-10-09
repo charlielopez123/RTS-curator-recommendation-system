@@ -1,14 +1,19 @@
 # ROBUST EPISODE DETECTION PATTERNS
 EPISODE_PATTERNS = [
-    r'ép\.\s*\d+',           # ép.1, ép. 2, etc.
-    r'épisode\s*\d+',        # épisode 1, épisode 2
-    r'^ep\.\s*\d+',          # ep.1, ep. 2 (at start)
-    r'^E\d+',                # E1, E23, etc. (at start)
-    r'S\d+E\d+',             # S01E01, S1E2, etc.
-    r'^\d+$',                # Just a number (like "1", "2")
-    r'^\d+\s*-\s*',          # "1 - Something", "2 - Title"
-    r'partie\s*\d+',         # partie 1, partie 2
-    r'\bpart\s*\d+',         # part 1, part 2
+    r'[eéè]p\.\s*\d+',           # ép.1, ep.1, ép. 2, ep. 2, etc.
+    r'[eéè]pisode\s*\d+',        # épisode 1, episode 1, èpisode 2
+    r'^E\d+',                    # E1, E23, etc. (at start)
+    r'S\d+E\d+',                 # S01E01, S1E2, etc.
+    r'^\d+$',                    # Just a number (like "1", "2")
+    r'^\d+\s*-\s*',              # "1 - Something", "2 - Title"
+    r'partie\s*\d+',             # partie 1, partie 2
+    r'\bpart\s*\d+',             # part 1, part 2
+]
+
+# IGNORE PATTERNS - titles containing these words should NOT be considered movies
+IGNORE_PATTERNS = [
+    r'\bdoublons?\b',            # doublon, doublons (word boundary)
+    r'\bs[eéè]ries?\b',          # serie, series, série, séries (word boundary)
 ]
 
 # Date patterns in title
@@ -43,3 +48,9 @@ FILM_COLLECTION_KEYWORDS = [
     'film', 'cinéma', 'cinema', 'fiction', 'téléfilm',
     'comédie', 'action', 'classique', 'nocturne', 'écran'
 ]
+
+DATE_COLS = [
+        'start_rights', 'end_rights',
+        'date_diff_1', 'date_last_diff',
+        'date_rediff_1', 'date_rediff_2', 'date_rediff_3', 'date_rediff_4'
+    ]

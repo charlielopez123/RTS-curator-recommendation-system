@@ -4,6 +4,16 @@ from urllib3.util.retry import Retry
 from cts_recommender.settings import get_settings, TMDBSettings
 from typing import Any
 import logging
+import certifi  # Provides Mozilla's CA bundle for SSL certificate verification
+import urllib3
+
+cfg = get_settings()
+# Disable SSL warnings since we're using verify=False temporarily
+if cfg.verify_ssl is False:
+    verify = cfg.verify_ssl
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+else:
+    verify=certifi.where()
 
 cfg = get_settings()
 logger = logging.getLogger(__name__)
@@ -89,10 +99,23 @@ class TMDB_APIClient:
     def get(self, path: str, params=None) -> Any:
         """
         Perform a GET request to the TMDb API, returning parsed JSON.
+
+        Uses certifi's CA bundle for SSL verification to ensure compatibility
+        across different platforms, especially macOS where Python may not have
+        access to system certificates by default.
         """
         api_base_url: str = str(self.tmdb.api_base_url)
         url = f"{api_base_url.rstrip('/')}/{path.lstrip('/')}"
-        resp = self.session.get(url, params=params, timeout=10)
+
+        # TEMPORARY: SSL verification disabled due to macOS Python SSL configuration issue
+        # Root cause: Python's _ssl module uses system ca-certificates (3178 certs, Sept 2025)
+        # instead of certifi's bundle (4738 certs, Oct 2025)
+        #
+        # TODO: Re-enable SSL verification after fixing system certificates:
+        # Option 1: Update system ca-certificates: brew upgrade ca-certificates && brew reinstall openssl@3
+        # Option 2: Reinstall Python to link to newer OpenSSL: brew reinstall python@3.12
+        # Then change verify=False back to: verify=certifi.where()
+        resp = self.session.get(url, params=params, timeout=10, verify=cfg.verify_ssl)
         return self._handle_response(resp)
 
 

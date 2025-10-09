@@ -1,28 +1,50 @@
 from pathlib import Path
 import pandas as pd
+import numpy as np
 import re
 
 from cts_recommender.io import readers
 from cts_recommender.settings import get_settings
 from cts_recommender.preprocessing.whatson_constants import *
+from cts_recommender import RTS_constants
+from cts_recommender.preprocessing import dates
 
 
 def load_whatson_catalog_csv(csv_path: Path) -> pd.DataFrame: 
     whatson_df = readers.read_csv(csv_path, sep='\t')
     return whatson_df
 
+# Load the preprocessed programming file into a DataFrame
+def load_whatson_movie_catalogue(data_path: Path) -> pd.DataFrame:
+    df = readers.read_parquet(data_path)
+    return df
+
 def is_episode_title(title: str) -> bool:
     """Check if a title matches episode patterns."""
     if pd.isna(title):
         return False
-    
+
     title_str = str(title).strip()
-    
+
     # Check all episode patterns
     for pattern in EPISODE_PATTERNS:
         if re.search(pattern, title_str, re.IGNORECASE):
             return True
-    
+
+    return False
+
+def has_ignore_pattern(title: str) -> bool:
+    """Check if a title contains ignore patterns (doublon, serie, etc.)."""
+    if pd.isna(title):
+        return False
+
+    title_str = str(title).strip()
+
+    # Check all ignore patterns
+    for pattern in IGNORE_PATTERNS:
+        if re.search(pattern, title_str, re.IGNORECASE):
+            return True
+
     return False
 
 def has_date_pattern(title: str) -> bool:
@@ -142,10 +164,18 @@ def should_keep_as_movie(row: pd.Series, title_counts: pd.Series, collection_cou
     collection = row['collection']
     duration = row['duration']
     
+    # If title is unavailble, ignore
+    if pd.isna(title):
+        return False
+    
     # Rule 1: Check for episode patterns in title or original_title
     if is_episode_title(title) or is_episode_title(original_title):
         return False
-    
+
+    # Rule 1b: Check for ignore patterns (doublon, serie, etc.) in title
+    if has_ignore_pattern(title):
+        return False
+
     # Rule 2: Check for date patterns in title
     if has_date_pattern(title):
         return False
@@ -201,4 +231,71 @@ def should_keep_as_movie(row: pd.Series, title_counts: pd.Series, collection_cou
     
     # Rule 11: Default to NOT movie (conservative approach)
     return False
+
+
+def create_whatson_catalog(enriched_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Create a deduplicated movie catalog with catalog IDs from enriched WhatsOn data.
+
+    This function:
+    1. Deduplicates movies by processed_title (keeping row with most information)
+    2. Assigns catalog_id (uses tmdb_id when available, custom ID otherwise)
+    3. Converts date columns to datetime format
+    4. Adds computed features (times_shown, movie_age)
+    5. Returns catalog indexed by catalog_id
+
+    Parameters:
+    enriched_df (pd.DataFrame): TMDB-enriched movie data
+
+    Returns:
+    pd.DataFrame: Deduplicated catalog indexed by catalog_id
+    """
+    df = enriched_df.copy()
+
+    # Step 1: Count non-null entries in each row for deduplication scoring
+    df['info_score'] = df.notna().sum(axis=1)
+
+    # Step 2: Define deduplication key
+    # Use processed_title as primary key (this comes from TMDB enrichment)
+    group_cols = ['processed_title']
+
+    # Keep row with max info_score within each group
+    catalog_df = df.sort_values('info_score', ascending=False).drop_duplicates(subset=group_cols, keep='first')
+
+    # Drop helper column
+    catalog_df = catalog_df.drop(columns='info_score')
+
+    # Step 3: Assign catalog_id
+    # Base ID on TMDB if available, else assign a unique fallback
+    catalog_df['catalog_id'] = catalog_df['tmdb_id'].astype('Int64').astype(str)
+
+    # Assign fallback ID for missing tmdb_id
+    missing_mask = catalog_df['missing_tmdb_id'] == True
+    catalog_df.loc[missing_mask, 'catalog_id'] = [
+        f"{RTS_constants.WHATSON_CATALOG_ID_PREFIX}{i:06d}"
+        for i in range(missing_mask.sum())
+    ]
+
+    # Step 4: Convert date columns to datetime format
+    for col in DATE_COLS:
+        if col in catalog_df.columns:
+            catalog_df[col] = pd.to_datetime(catalog_df[col], errors='coerce')
+
+    # Step 5: Add computed features
+
+    # times_shown - count non-null broadcast dates (date_diff_1 and date_rediff_1-4)
+    broadcast_date_cols = ['date_diff_1', 'date_rediff_1', 'date_rediff_2', 'date_rediff_3', 'date_rediff_4']
+    available_broadcast_cols = [col for col in broadcast_date_cols if col in catalog_df.columns]
+    catalog_df.loc[:, 'times_shown'] = catalog_df[available_broadcast_cols].notna().sum(axis=1)
+
+    # movie_age - calculate from release_date
+    if 'release_date' in catalog_df.columns:
+        release_dates = pd.to_datetime(catalog_df['release_date'], errors='coerce')
+        catalog_df.loc[:, 'movie_age'] = (pd.Timestamp.now() - release_dates).dt.days // 365
+
+    # Step 6: Reset index and set catalog_id as index
+    catalog_df = catalog_df.reset_index(drop=True)
+    catalog_df = catalog_df.set_index('catalog_id')
+
+    return catalog_df
 

@@ -50,3 +50,4 @@ notebooks = [
 cts-reco-prepare-programming = "cts_recommender.cli.prepare_programming:main"
 cts-reco-train-audience-ratings = "cts_recommender.cli.train_audience_ratings:main"
 cts-reco-extract-whatson = "cts_recommender.cli.whatson_extraction:main"
+cts-reco-historical-programming = "cts_recommender.cli.historical_programming:main"

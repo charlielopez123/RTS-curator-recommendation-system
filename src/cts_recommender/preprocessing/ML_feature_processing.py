@@ -1,10 +1,10 @@
 from pathlib import Path
 import pandas as pd
-import numpy as np
 import logging
 from cts_recommender import RTS_constants
 from cts_recommender.features.TV_programming_Rdata_schema import ML_FEATURES
 from cts_recommender.io.readers import read_parquet
+from cts_recommender.preprocessing import feature_transformations
 
 logger = logging.getLogger(__name__)
 
@@ -15,88 +15,89 @@ def load_processed_and_enriched_programming(data_path_processed: Path, data_path
     return processed_df, enriched_df
 
 
+# Import shared transformation functions
+process_movie_tmdb_features = feature_transformations.process_tmdb_features
+add_genre_features = feature_transformations.add_genre_features
+add_movie_age_feature = feature_transformations.add_movie_age_feature
+
+
+def finalize_ml_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Final processing: convert booleans to int and validate no NaNs remain.
+
+    Parameters:
+    df (pd.DataFrame): DataFrame with all features
+
+    Returns:
+    pd.DataFrame: DataFrame ready for ML
+    """
+    # Convert booleans using shared utility
+    df = feature_transformations.convert_bool_to_int(df)
+
+    # Check for any remaining NaNs
+    num_nans = df.isna().sum().sum()
+    if num_nans > 0:
+        logger.warning(f"DataFrame contains {num_nans} NaN values after processing. Please check the data.")
+        logger.warning(df.isna().sum()[df.isna().sum() > 0])
+
+    return df
+
+
+def build_X_features_movies_only(df_enriched: pd.DataFrame) -> pd.DataFrame:
+    """
+    Build ML features for movies-only datasets (e.g., WhatsOn catalog).
+    Use this when you don't have non-movie content to merge.
+
+    Parameters:
+    df_enriched (pd.DataFrame): The enriched movie features DataFrame with TMDB data.
+
+    Returns:
+    pd.DataFrame: The feature-ready DataFrame for movies.
+    """
+    # Process TMDB features
+    df = process_movie_tmdb_features(df_enriched, is_movie=True)
+
+    # Select columns needed for processing
+    # Note: We don't filter by ML_FEATURES here since we need genres and release_date
+    # for processing, and they'll be transformed/dropped later
+
+    # Add genre one-hot encoding
+    df = add_genre_features(df)
+
+    # Add movie age
+    df = add_movie_age_feature(df)
+
+    # Drop columns that are not ML features (e.g., tmdb_id used for processing)
+    cols_to_drop = [col for col in ['tmdb_id'] if col in df.columns]
+    if cols_to_drop:
+        df = df.drop(columns=cols_to_drop)
+
+    # Final cleanup
+    df = finalize_ml_features(df)
+
+    return df
+
+
 def build_X_features(processed_df: pd.DataFrame, df_enriched: pd.DataFrame) -> pd.DataFrame:
     """
-    Build the feature set X by merging the programming DataFrame with the enriched movie features DataFrame
-    
+    Build the feature set X by merging the programming DataFrame with the enriched movie features DataFrame.
+    Use this for programming data that contains both movies and non-movies.
+
     Parameters:
-    processed_df (pd.DataFrame): The preprocessed programming DataFrame.
+    processed_df (pd.DataFrame): The preprocessed programming DataFrame (includes non-movies).
     df_enriched (pd.DataFrame): The enriched movie features DataFrame.
-    
+
     Returns:
-    pd.DataFrame: The feature set X.
-"""
-    
-    #Remove movies from processed_df
-    # --- make explicit copies before mutating to avoid SettingWithCopyWarning ---
+    pd.DataFrame: The feature set X combining both movies and non-movies.
+    """
+
+    # Remove movies from processed_df (they're in df_enriched)
     nonmovie_mask = ~processed_df['class_key'].isin(RTS_constants.ALL_MOVIE_CLASSKEYS)
-    nonmovie_df = processed_df.loc[nonmovie_mask].copy()   # <— explicit copy
-    df_enriched = df_enriched.copy()                       # <— safe to mutate
+    nonmovie_df = processed_df.loc[nonmovie_mask].copy()
 
-
-    # Feature preprocessing for handling missing values
-    nonmovie_df.loc[:, 'adult'] = False
-    df_enriched['adult'] = np.where(
-        df_enriched['adult'].isna(),
-        False,
-        df_enriched['adult']
-    ).astype(bool)
-    nonmovie_df.loc[:, 'original_language'] = 'unknown'
-    df_enriched['original_language'] = np.where(
-        df_enriched['original_language'].isna(),
-        'unknown',
-        df_enriched['original_language']
-    )
-
-    # Genres
-    # Add empty genres list for non-movies
-    nonmovie_df.loc[:, 'genres'] = [[] for _ in range(len(nonmovie_df))]
-    df_enriched['genres'] = df_enriched['genres'].apply(
-        lambda x: x.tolist() if isinstance(x, np.ndarray) else (x if isinstance(x, list) else [])
-    )
-
-    # Release date
-    nonmovie_df.loc[:, 'release_date'] = '1900-01-01'
-    nonmovie_df.loc[:,'missing_release_date']= True
-
-    df_enriched['release_date'] = np.where(
-        df_enriched['release_date'].isna(),
-        '1900-01-01',
-        df_enriched['release_date']
-    )
-    df_enriched.loc[:, 'missing_release_date'] = (
-        df_enriched['release_date'].isna() | (df_enriched['release_date'] == '')
-    )
-    df_enriched.loc[:, 'release_date'] = df_enriched['release_date'].fillna('1900-01-01').replace('', '1900-01-01')
-
-    # Missing Revenue put as 0
-    nonmovie_df.loc[:, 'revenue'] = 0
-    df_enriched['revenue'] = np.where(
-        df_enriched['revenue'].isna(),
-        0,
-        df_enriched['revenue']
-    )
-
-    # missing tmdb id feature
-    nonmovie_df.loc[:, 'missing_tmdb']=True
-    df_enriched.loc[:, 'missing_tmdb'] = np.where(
-        df_enriched['tmdb_id'].isna(),
-        True,
-        False
-    )
-
-    # Add vote average as median or zero
-    df_enriched.loc[:, 'vote_average'] = df_enriched['vote_average'].fillna(0)
-    nonmovie_df.loc[:, 'vote_average'] = 0
-
-
-    #  Add popularity as median or zero 
-    df_enriched.loc[:, 'popularity'] = df_enriched['popularity'].fillna(0)
-    nonmovie_df.loc[:, 'popularity'] = 0
-
-    # Separate Movies and TV Shows
-    nonmovie_df.loc[:, 'is_movie'] = False
-    df_enriched.loc[:, 'is_movie'] = True
+    # Process TMDB features for both movies and non-movies
+    nonmovie_df = process_movie_tmdb_features(nonmovie_df, is_movie=False)
+    df_enriched = process_movie_tmdb_features(df_enriched, is_movie=True)
 
     # Select only ML features that exist in both datasets plus processing columns
     # This ensures consistent column ordering for sklearn models
@@ -104,43 +105,19 @@ def build_X_features(processed_df: pd.DataFrame, df_enriched: pd.DataFrame) -> p
     # Add columns needed for processing (will be processed/dropped later)
     processing_features = available_features + ['genres', 'release_date']
 
-    nonmovie_df = nonmovie_df[processing_features]  # nonmovie_df now has all processing features
-    df_enriched = df_enriched[processing_features]  # enriched_df has all features
+    nonmovie_df = nonmovie_df[processing_features]
+    df_enriched = df_enriched[processing_features]
 
-    # full_df includes all movies and non-movies
+    # Combine movies and non-movies
     full_df = pd.concat([nonmovie_df, df_enriched])
 
-    # One-hot encoding for categorical features
-    full_df.loc[:, 'genre_names'] = full_df['genres'].apply(lambda lst: [d['name'] for d in lst])
-    exploded = full_df.explode(['genre_names'])
-    dummies = pd.get_dummies(
-        exploded["genre_names"],
-        prefix="genre"
-    )
-    genre_dummies = dummies.groupby(level=0).sum()
-    full_df = pd.concat([full_df, genre_dummies], axis=1)
+    # Add genre one-hot encoding
+    full_df = add_genre_features(full_df)
 
-    # Drop the intermediate genre columns - we now have the one-hot encoded versions
-    full_df = full_df.drop(columns=['genres', "genre_names"])
+    # Add movie age
+    full_df = add_movie_age_feature(full_df)
 
-    full_df["release_date_dt"] = pd.to_datetime(
-        full_df["release_date"],
-        format="%Y-%m-%d",
-    )
-
-    full_df['movie_age'] = pd.Timestamp('today').year - pd.to_datetime(full_df['release_date'], format='%Y-%m-%d').dt.year
-    # Drop intermediate columns not needed for modeling
-    full_df = full_df.drop(columns=['release_date', 'release_date_dt'])
-
-    # Convert all bool columns → int (0/1)
-    bool_cols = full_df.select_dtypes(include='bool').columns
-    full_df[bool_cols] = full_df[bool_cols].astype(int)
-
-    # Check for any remaining NaNs
-    num_nans = full_df.isna().sum().sum()
-    assert num_nans == 0, f"DataFrame contains {num_nans} NaN values after processing."
-    if num_nans > 0:
-        logger.warning(f"DataFrame contains {num_nans} NaN values after processing. Please check the data.")
-        logger.warning(full_df.isna().sum())
+    # Final cleanup
+    full_df = finalize_ml_features(full_df)
 
     return full_df

@@ -11,6 +11,8 @@ def main():
     p.add_argument("--rdata", help="Path to .RData file")
     p.add_argument("--out_processed", required=True, help="Path to output processed parquet")
     p.add_argument("--out_enriched", required=True, help="Path to output enriched parquet")
+    p.add_argument("--out_ml", required=True, help="Path to output ml features parquet")
+    
     p.add_argument("--log_level", default="INFO", help="Logging level (DEBUG, INFO, WARNING, ERROR)")
 
     a = p.parse_args()
@@ -23,7 +25,7 @@ def main():
     _, out_enriched = programming_processing_pipeline.run_enrich_programming_with_movie_metadata_pipeline(processed_file=out_processed, out_file=Path(a.out_enriched))
     logger.info(f"Wrote {out_enriched}")
 
-    _, out_ml = programming_processing_pipeline.run_ML_feature_processing_pipeline(processed_file=out_processed, enriched_file=out_enriched)
+    _, out_ml = programming_processing_pipeline.run_ML_feature_processing_pipeline(processed_file=out_processed, enriched_file=out_enriched, out_file=Path(a.out_ml))
     logger.info(f"Wrote {out_ml}")
 
 if __name__ == "__main__":
