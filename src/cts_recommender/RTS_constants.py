@@ -29,15 +29,21 @@ HISTORICAL_PROGRAMMING_COLUMNS = [
         'is_weekend',
         'season',
         'public_holiday',
-        'tmdb_id',
-        'genres',
-        'release_date',
-        'vote_average',
-        'popularity',
-        'revenue',
-        'adult',
-        'original_language',
-        'missing_tmdb_id',
+        'tmdb_id',  # Keep for matching purposes, but features should come from catalog
+        'missing_tmdb_id',  # Data quality flag
     ]
 
 INTEREST_CHANNELS = ['RTS 1', 'RTS 2']
+
+# Competition Channels
+COMPETITOR_CHANNELS = [
+    "France 2", "France 3", "M6_T_PL", "TF1_T_PL"
+]
+
+# M6 and TF1 use different classification codes than RTS:
+# Code '1' = General programming (includes movies, TV shows, reality TV, etc.)
+# Code '2' = Shopping/infomercials (M6 BOUTIQUE, TELE SHOPPING)
+# For M6/TF1 movie extraction, use Code '1' + duration-based filtering (>=75 min)
+M6_TF1_CLASSKEYS = ['1', '2']
+M6_TF1_GENERAL_PROGRAMMING = '1'
+M6_TF1_SHOPPING = '2'

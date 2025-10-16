@@ -12,8 +12,10 @@ OUT_WHATSON_INIT_EXTRACTION ?= data/processed/whatson/whatson_extracted_movies.p
 OUT_WHATSON_ENRICHED ?= data/processed/whatson/whatson_catalogue_enriched_tmdb.parquet
 OUT_WHATSON_CATALOG ?= data/processed/whatson/whatson_catalog.parquet
 
-OUT_HISTORICAL_PROGRAMMING ?= data/processed/whatson/historical_programming.parquet
-OUT_BROADCAST_STATS ?= data/processed/whatson/broadcast_statistics.parquet
+OUT_HISTORICAL_PROGRAMMING ?= data/processed/programming/historical_programming.parquet
+
+OUT_IL_TRAINING_DATA ?= data/processed/IL/training_data.joblib
+OUT_CURATOR_MODEL ?= data/models/curator_logistic_model.joblib
 
 LOG_LEVEL ?= INFO
 
@@ -23,10 +25,41 @@ export REQUESTS_CA_BUNDLE := $(shell .venv/bin/python -c "import certifi; print(
 # ---- Defaults -------------------------------------------------------------
 .SHELLFLAGS := -eu -o pipefail -c
 .DEFAULT_GOAL := help
-.PHONY: help setup bootstrap lint fmt fix test prepare-programming train-audience-ratings extract-whatson historical-programming clean env
+.PHONY: help setup bootstrap lint fmt fix test prepare-programming train-audience-ratings extract-whatson historical-programming extract-IL-training-data train-curator-model run-all clean env
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | sed 's/:.*## / - /'
+
+run-all: ## Run the complete end-to-end pipeline
+	@echo "=== Starting complete pipeline ==="
+	@echo "Step 1/6: Processing programming data (RData -> processed -> enriched -> ML features)"
+	$(MAKE) prepare-programming
+	@echo ""
+	@echo "Step 2/6: Extracting WhatsOn catalog"
+	$(MAKE) extract-whatson
+	@echo ""
+	@echo "Step 3/6: Building historical programming (matching broadcasts to catalog)"
+	$(MAKE) historical-programming
+	@echo ""
+	@echo "Step 4/6: Training audience ratings model"
+	$(MAKE) train-audience-ratings
+	@echo ""
+	@echo "Step 5/6: Extracting IL training data"
+	$(MAKE) extract-IL-training-data
+	@echo ""
+	@echo "Step 6/6: Training curator model"
+	$(MAKE) train-curator-model
+	@echo ""
+	@echo "=== Pipeline complete! ==="
+	@echo "Outputs:"
+	@echo "  - Programming: $(OUT_PROCESSED)"
+	@echo "  - Enriched: $(OUT_ENRICHED)"
+	@echo "  - ML Features: $(ML_FEATURES_PATH)"
+	@echo "  - WhatsOn Catalog: $(OUT_WHATSON_CATALOG)"
+	@echo "  - Historical Programming: $(OUT_HISTORICAL_PROGRAMMING)"
+	@echo "  - Audience Model: $(MODEL_OUTPUT)"
+	@echo "  - IL Training Data: $(OUT_IL_TRAINING_DATA)"
+	@echo "  - Curator Model: $(OUT_CURATOR_MODEL)"
 
 setup: ## Install / sync deps
 	uv sync
@@ -71,8 +104,22 @@ historical-programming: ## Build historical programming by matching broadcasts t
 	LOG_LEVEL=$(LOG_LEVEL) uv run cts-reco-historical-programming \
 		--programming $(OUT_ENRICHED) \
 		--catalog $(OUT_WHATSON_CATALOG) \
-		--out $(OUT_HISTORICAL_PROGRAMMING) \
-		--out-stats $(OUT_BROADCAST_STATS)
+		--out $(OUT_HISTORICAL_PROGRAMMING)
+
+extract-IL-training-data: ## Extract imitation learning training data
+	mkdir -p $(dir $(OUT_IL_TRAINING_DATA))
+	LOG_LEVEL=$(LOG_LEVEL) uv run cts-reco-extract-IL-training-data \
+		--historical $(OUT_HISTORICAL_PROGRAMMING) \
+		--catalog $(OUT_WHATSON_CATALOG) \
+		--audience-model $(MODEL_OUTPUT) \
+		--out $(OUT_IL_TRAINING_DATA)
+
+train-curator-model: ## Train curator logistic regression model
+	mkdir -p $(dir $(OUT_CURATOR_MODEL))
+	LOG_LEVEL=$(LOG_LEVEL) uv run cts-reco-train-curator-model \
+		--training-data $(OUT_IL_TRAINING_DATA) \
+		--out $(OUT_CURATOR_MODEL) \
+
 
 clean: ## Clean caches
 	rm -rf .pytest_cache .ruff_cache dist build *.egg-info

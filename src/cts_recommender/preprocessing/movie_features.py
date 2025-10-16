@@ -9,6 +9,7 @@ from cts_recommender.adapters.tmdb import tmdb
 from cts_recommender import RTS_constants
 from cts_recommender.io.readers import read_parquet
 from cts_recommender.preprocessing.whatson_extraction import parse_duration_minutes
+from cts_recommender.preprocessing.processing_constants import REMOVE_TF1_M6_NON_MOVIES
 from cts_recommender.features.tmdb_extract import BASIC_FEATURES
 
 
@@ -80,6 +81,23 @@ def enrich_movie_feature_row(row):
     return row
 
 
+def is_non_movie_title(title: str) -> bool:
+    """
+    Check if a title contains keywords that indicate it's not a movie (TV shows, reality shows, etc.).
+
+    Parameters:
+    title (str): The title to check
+
+    Returns:
+    bool: True if the title contains a non-movie keyword, False otherwise
+    """
+    if pd.isna(title):
+        return False
+
+    title_upper = str(title).upper()
+    return any(keyword in title_upper for keyword in REMOVE_TF1_M6_NON_MOVIES)
+
+
 def enrich_programming_with_movie_metadata(df: pd.DataFrame, extract_movies: bool = True, title_column: str = 'title') -> pd.DataFrame:
     """
     Enrich the programming DataFrame with movie metadata from TMDB API.
@@ -97,7 +115,30 @@ def enrich_programming_with_movie_metadata(df: pd.DataFrame, extract_movies: boo
 
     # Extract the movies from the programming dataset using the relevant broadcast class key values
     if extract_movies:
-        movies_df: pd.DataFrame = df[df['class_key'].isin(RTS_constants.ALL_MOVIE_CLASSKEYS)]
+        # Standard filtering for RTS and France 2/3 channels (use class keys)
+        standard_movies = df[df['class_key'].isin(RTS_constants.ALL_MOVIE_CLASSKEYS)]
+
+        # Special handling for M6 and TF1 channels which use different classification
+        # Code '1' = general programming, Code '2' = shopping/infomercials
+        # Filter by Code '1' AND duration >= 75 minutes to capture movies
+        m6_tf1_channels = ['M6_T_PL', 'TF1_T_PL']
+        m6_tf1_movies_raw = df[
+            (df['channel'].isin(m6_tf1_channels)) &
+            (df['class_key'] == '1') &
+            (df['duration_min'] >= 75)
+        ]
+
+        # Remove known non-movie titles from M6/TF1 (TV shows, reality shows, etc.)
+        m6_tf1_movies = m6_tf1_movies_raw[~m6_tf1_movies_raw['title'].apply(is_non_movie_title)]
+        num_filtered = len(m6_tf1_movies_raw) - len(m6_tf1_movies)
+
+        # Combine both approaches
+        # Don't use ignore_index to preserve original indices from programming data
+        movies_df = pd.concat([standard_movies, m6_tf1_movies]).drop_duplicates()
+
+        logger.info(f"Extracted {len(standard_movies)} movies from RTS/France channels")
+        logger.info(f"Extracted {len(m6_tf1_movies)} movies from M6/TF1 channels (Code 1, duration >= 75 min, filtered {num_filtered} non-movies)")
+        logger.info(f"Total movies after deduplication: {len(movies_df)}")
     else:
         # For the case of the whatson catalogue, movie selection alreay applied
         movies_df = df.copy()

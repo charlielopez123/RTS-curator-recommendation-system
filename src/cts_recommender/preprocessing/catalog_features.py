@@ -64,13 +64,8 @@ def build_catalog_features(enriched_df: pd.DataFrame) -> pd.DataFrame:
     # Process TMDB features (all catalog entries are movies)
     df = feature_transformations.process_tmdb_features(enriched_df, is_movie=True)
 
-    # Add genre one-hot encoding
-    df = feature_transformations.add_genre_features(df)
-
     # Add movie age
     df = feature_transformations.add_movie_age_feature(df)
-
-    # Keep tmdb_id for catalog creation and deduplication (used in create_whatson_catalog)
 
     # Final cleanup
     df = finalize_catalog_features(df)

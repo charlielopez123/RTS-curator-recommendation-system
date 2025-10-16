@@ -18,6 +18,9 @@ dist/
 # --- Env & secrets ---
 .env
 
+# --- Competition related ---
+comp_constants.py
+
 # --- Data & models (keep small samples only) ---
 data/**
 models/**
@@ -27,6 +30,7 @@ models/**
 !data/reference/
 !data/reference/.gitkeep
 
-# --- Claude related docs ---
+# --- AI related docs ---
 .claude
 CLAUDE.md
+GEMINI.md

@@ -1,320 +1,220 @@
 # Pipeline Architecture
 
-This document explains the RTS Curator Recommendation System's data processing pipeline architecture, stages, and how they work together.
+The system has 5 independent pipelines. Each pipeline:
+- Lives in `src/cts_recommender/pipelines/`
+- Has a corresponding CLI script in `src/cts_recommender/cli/`
+- Returns `(dataframe, output_path)` tuple
+- Uses atomic writes (temp file → rename)
+- Has default paths from `settings.py`
 
-## Overview
-
-The pipeline consists of three main stages that transform raw RTS programming data into ML-ready features:
-
-```
-Raw R Data → Preprocessed → TMDB Enriched → ML Features
-```
-
-Each stage is implemented as a separate pipeline function that can be run independently or as part of the complete workflow.
-
-## Pipeline Functions
-
-### Core Pipeline Functions
-
-All pipeline functions are located in `src/cts_recommender/pipelines/programming_pipeline.py`:
+## Pipeline Structure Pattern
 
 ```python
-from cts_recommender.pipelines import programming_pipeline
+def run_pipeline(
+    input_file: Optional[Path] = None,
+    out_file: Optional[Path] = None
+) -> tuple[pd.DataFrame, Path]:
+    """
+    Pipeline docstring explaining what it does.
 
-# Stage 1: Raw data preprocessing
-run_original_Rdata_programming_pipeline()
+    Parameters: input files, output files (all optional with defaults)
+    Returns: (processed_df, output_path)
+    """
+    # 1. Set defaults from settings
+    if input_file is None:
+        input_file = cfg.some_default_path
+    if out_file is None:
+        out_file = cfg.some_output_path
 
-# Stage 2: TMDB metadata enrichment
-run_enrich_programming_with_movie_metadata_pipeline()
+    # 2. Log start
+    logger.info("=== Pipeline Name ===")
 
-# Stage 3: ML feature preparation
-run_ML_feature_processing_pipeline()
+    # 3. Load data
+    df = readers.read_format(input_file)
+
+    # 4. Process data (call preprocessing functions)
+    processed_df = preprocessing_module.do_work(df)
+
+    # 5. Save atomically
+    atomic_write_parquet(processed_df, out_file)
+
+    # 6. Log completion
+    logger.info(f"Output: {out_file}")
+
+    return processed_df, out_file
 ```
 
-## Stage 1: Raw Data Preprocessing
+## 1. Programming Processing Pipeline
 
-**Function**: `run_original_Rdata_programming_pipeline()`
+**File**: `programming_processing_pipeline.py`
 
-**Purpose**: Convert raw RTS programming data into clean, feature-engineered format
+**Purpose**: Process RTS programming data in 3 stages
 
-### Input
-- **File**: `.RData` file containing RTS programming schedule
-- **Format**: R data frame with Swiss broadcasting data
-- **Columns**: Date, Title, Description, Channel, Times, Classifications, Metrics
+**Stages**:
+1. `run_original_Rdata_programming_pipeline()` - Load RData, filter, extract movies
+2. `run_enrich_programming_with_movie_metadata_pipeline()` - Add TMDB metadata
+3. `run_ML_feature_processing_pipeline()` - Build ML feature matrix
 
-### Process
+**Key preprocessing**:
+- `preprocessing/programming.py` - Load/preprocess RData (uses `pyreadr`)
+- `preprocessing/movie_features.py` - TMDB enrichment
+- `preprocessing/ML_feature_processing.py` - Feature engineering
 
-1. **Data Loading** (`programming.load_original_programming()`)
-   - Loads R data file using `rpy2`
-   - Validates expected column structure
-   - Handles R-specific data types
+**Outputs**:
+- `programming.parquet` - Preprocessed
+- `programming_enriched.parquet` - With TMDB
+- `ML_features.parquet` - ML-ready
 
-2. **Data Filtering** (`programming.preprocess_programming()`)
-   - **Audience Filter**: Keep only "Personnes 3+" (Adults 3+)
-   - **Activity Filter**: Keep only "Overnight+7" (Live + 7-day replay)
-   - **Data Quality**: Remove records with missing critical fields
+**Feature order matters**: See `features/schemas.py` for sklearn compatibility
 
-3. **Column Standardization**
-   - Rename columns from French/R format to Python conventions
-   - Convert data types (dates, durations, numeric metrics)
-   - Standardize text fields
+## 2. WhatsOn Extraction Pipeline
 
-4. **Feature Engineering**
-   - **Temporal Features**:
-     - `hour`: Hour of broadcast (0-23)
-     - `weekday`: Day of week (0-6)
-     - `is_weekend`: Boolean weekend indicator
-     - `season`: Meteorological season (Spring, Summer, Fall, Winter)
-   - **Duration Features**:
-     - `duration_min`: Program duration in minutes
-   - **Holiday Detection**:
-     - `public_holiday`: Boolean using Swiss holiday calendar
-     - Uses reference data from `data/reference/holidays.json`
+**File**: `whatson_extraction_pipeline.py`
 
-### Output
-- **File**: `data/processed/programming.parquet`
-- **Format**: Clean pandas DataFrame with standardized features
-- **Size**: Filtered to relevant content (~50-70% of original data)
+**Purpose**: Build movie catalog from WhatsOn CSV
 
-### Code Example
+**Process**:
+1. Load CSV with movie showings
+2. Extract unique movies
+3. Enrich with TMDB
+4. Build catalog with features
 
-```python
-from pathlib import Path
-from cts_recommender.pipelines import programming_pipeline
+**Key preprocessing**:
+- `preprocessing/whatson_extraction.py` - CSV parsing
+- `preprocessing/catalog_features.py` - Feature building
 
-# Run preprocessing
-processed_df, output_file = programming_pipeline.run_original_Rdata_programming_pipeline(
-    raw_file=Path("data/raw/original_R_dataset.RData"),
-    out_file=Path("data/processed/programming.parquet")
-)
+**Output**: `whatson_catalog.parquet` (indexed by `catalog_id`)
 
-print(f"Processed {len(processed_df)} records")
-print(f"Output saved to: {output_file}")
-```
+**Schema**: See `features/whatson_schema.py` and `features/catalog_schema.py`
 
-## Stage 2: TMDB Metadata Enrichment
+## 3. Historical Programming Pipeline
 
-**Function**: `run_enrich_programming_with_movie_metadata_pipeline()`
+**File**: `historical_programming_pipeline.py`
 
-**Purpose**: Enrich movie records with comprehensive metadata from The Movie Database
+**Purpose**: Match TV broadcasts to catalog (fact table)
 
-### Input
-- **File**: Preprocessed programming data (`programming.parquet`)
-- **Dependencies**: TMDB API credentials in environment
+**Process**:
+1. Load enriched programming (has TMDB IDs)
+2. Load catalog (indexed by catalog_id)
+3. Match via TMDB ID
+4. Create fact table: broadcast metadata + catalog_id link
 
-### Process
+**Key preprocessing**:
+- `preprocessing/historical_programming.py` - Matching logic
 
-1. **Movie Identification** (`movie_features.enrich_programming_with_movie_metadata()`)
-   - **Classification-Based**: Use RTS `class_key` to identify movies
-   - **Special Cases**: Handle movies with generic titles using description text
-   - **Movie Types**: Feature films, TV movies, documentaries
+**Output**: `historical_programming.parquet`
 
-2. **TMDB Matching** (`adapters.tmdb.tmdb.find_best_match()`)
-   - **Title Search**: Primary matching by movie title
-   - **Runtime Validation**: Secondary matching using program duration
-   - **Fuzzy Matching**: Handle title variations and translations
-   - **Decomposition**: Try title parts if full title fails
+**Schema**: Broadcast facts (date, channel, time, catalog_id, audience metrics)
+- **No TMDB features** - those live in catalog
+- Join with catalog to get movie features
 
-3. **Metadata Extraction** (`adapters.tmdb.tmdb.get_movie_features()`)
-   - **Basic Info**: Adult rating, original language, popularity
-   - **Financial Data**: Revenue, vote averages, vote counts
-   - **Content Data**: Genres (as structured list), release dates
-   - **Missing Indicators**: Track which movies have no TMDB match
+## 4. Audience Ratings Pipeline
 
-4. **Data Integration**
-   - Merge TMDB data with original programming records
-   - Preserve non-movie content unchanged
-   - Handle missing data with appropriate defaults
+**File**: `audience_ratings_regression_pipeline.py`
 
-### TMDB API Integration
+**Purpose**: Train regression model for audience ratings
 
-The system uses a robust TMDB client with:
-- **Rate Limiting**: Respects API limits
-- **Retry Logic**: Handles temporary failures
-- **Error Handling**: Graceful degradation for missing data
-- **Caching**: Potential for response caching (not yet implemented)
+**Process**:
+1. Load ML features
+2. Train/test split
+3. Train RandomForest regressor
+4. Evaluate metrics
+5. Save model
 
-### Output
-- **File**: `data/processed/programming_enriched.parquet`
-- **Format**: Programming data + TMDB metadata for movies
-- **New Columns**:
-  - `adult`, `original_language`, `popularity`
-  - `revenue`, `vote_average`, `genres`
-  - `release_date`, `missing_tmdb`
+**Key modules**:
+- `models/training.py` - Training logic
+- `models/audience_ratings_regressor.py` - Model wrapper
 
-## Stage 3: ML Feature Preparation
+**Output**: `audience_ratings_model.joblib`
 
-**Function**: `run_ML_feature_processing_pipeline()`
+**Target**: `rt_m` (audience ratings)
 
-**Purpose**: Create ML-ready feature matrix with consistent schema for all content types
+## 5. IL Training Data Pipeline
 
-### Input
-- **Files**: Both preprocessed and enriched datasets
-- **Schema**: Feature definitions from `features.schemas.ML_FEATURES`
+**File**: `IL_training_data_pipeline.py`
 
-### Process
+**Purpose**: Extract training samples for imitation learning
 
-1. **Data Loading** (`ML_feature_processing.load_processed_and_enriched_programming()`)
-   - Load both processed and enriched datasets
-   - Separate movie vs non-movie content
+**Process**:
+1. Load historical programming + catalog + audience model
+2. Create TV environment
+3. Extract positive samples (curator decisions)
+4. Generate negative samples (alternatives)
+5. Compute pseudo-rewards
+6. Save raw samples + numpy arrays
 
-2. **Feature Harmonization** (`ML_feature_processing.build_X_features()`)
-   - **Non-Movie Defaults**: Add TMDB-style features with sensible defaults
-   - **Missing Value Handling**: Fill nulls with appropriate values
-   - **Type Consistency**: Ensure matching data types across content
+**Key modules**:
+- `imitation_learning/IL_training.py` - HistoricalDataProcessor
+- `environments/TV_environment.py` - Context/feature extraction
+- `environments/reward.py` - Reward computation
 
-3. **Feature Engineering**
-   - **Genre Encoding**: One-hot encode movie genres
-   - **Date Features**: Extract movie age from release dates
-   - **Binary Indicators**: Create flags for missing data
-   - **Content Type**: Add `is_movie` flag
+**Outputs**:
+- `training_samples.joblib` - Raw dicts (for viz)
+- `training_data.joblib` - Numpy arrays (for training)
 
-4. **Schema Enforcement**
-   - **Column Selection**: Keep only features defined in `ML_FEATURES`
-   - **Order Consistency**: Ensure same column order for sklearn
-   - **Type Conversion**: Convert booleans to integers (0/1)
+**Parameters**:
+- `gamma`: Weight curator decisions vs pseudo-rewards
+- `negative_sampling_ratio`: Negatives per positive
+- `time_split_date`: Optional train/val split
 
-5. **Data Quality Checks**
-   - **NaN Detection**: Assert no missing values remain
-   - **Type Validation**: Verify expected data types
-   - **Feature Completeness**: Confirm all required features present
+## Common Patterns
 
-### Output
-- **File**: `data/processed/ML_features.parquet`
-- **Format**: ML-ready feature matrix
+### Data Loading
+- Use `io/readers.py` - handles R, JSON, Parquet
+- Use `io/writers.py` - atomic writes
 
-
-
-### Feature Categories
-
-The final feature set includes:
-
-1. **Programming Features** (8 features)
-   - `rt_m`, `pdm`: Audience metrics
-   - `hour`, `weekday`, `is_weekend`: Temporal
-   - `duration_min`: Content length
-   - `season`, `public_holiday`: Calendar
-
-2. **Categorical Features** (2 features)
-   - `channel`: Broadcasting channel
-   - `original_language`: Content language
-
-3. **TMDB Numerical** (3 features)
-   - `popularity`, `revenue`, `vote_average`
-
-4. **Boolean Indicators** (4 features)
-   - `adult`, `missing_release_date`, `missing_tmdb`, `is_movie`
-
-5. **Computed Features** (1 feature)
-   - `movie_age`: Years since release
-
-6. **Dynamic Genre Features** (~19 features)
-   - One-hot encoded movie genres (Action, Comedy, etc.)
-
-### Code Example
-
-```python
-# Run ML feature preparation
-ml_df, output_file = programming_pipeline.run_ML_feature_processing_pipeline(
-    processed_file=Path("data/processed/programming.parquet"),
-    enriched_file=Path("data/processed/programming_enriched.parquet"),
-    out_file=Path("data/processed/ML_features.parquet")
-)
-
-print(f"Feature matrix shape: {ml_df.shape}")
-print(f"Features: {list(ml_df.columns)}")
-```
-
-## Complete Pipeline Execution
-
-### Sequential Execution
-
-```python
-from pathlib import Path
-from cts_recommender.pipelines import programming_pipeline
-
-# Define paths
-raw_file = Path("data/raw/original_R_dataset.RData")
-processed_file = Path("data/processed/programming.parquet")
-enriched_file = Path("data/processed/programming_enriched.parquet")
-ml_file = Path("data/processed/ML_features.parquet")
-
-# Stage 1: Preprocess raw data
-processed_df, _ = programming_pipeline.run_original_Rdata_programming_pipeline(
-    raw_file=raw_file,
-    out_file=processed_file
-)
-
-# Stage 2: Enrich with TMDB
-enriched_df, _ = programming_pipeline.run_enrich_programming_with_movie_metadata_pipeline(
-    processed_file=processed_file,
-    out_file=enriched_file
-)
-
-# Stage 3: Prepare ML features
-ml_df, _ = programming_pipeline.run_ML_feature_processing_pipeline(
-    processed_file=processed_file,
-    enriched_file=enriched_file,
-    out_file=ml_file
-)
-
-print("Pipeline completed successfully!")
-```
-
-### Error Handling
-
-Each pipeline stage includes error handling for common issues:
-
-- **File Access**: Validates input files exist and are readable
-- **Data Quality**: Checks for expected columns and data types
-- **API Issues**: Handles TMDB API failures gracefully
-- **Memory**: Uses efficient pandas operations for large datasets
-
-### Configuration
-
-Pipeline behavior can be configured via settings:
-
+### Settings
 ```python
 from cts_recommender.settings import get_settings
-
-cfg = get_settings()
-print(f"Data root: {cfg.data_root}")
-print(f"TMDB API: {cfg.tmdb.api_base_url}")
+cfg = get_settings()  # Singleton, reads .env once
 ```
-
-## Performance Considerations
-
-### Memory Usage
-- **Chunking**: Large datasets may require processing in chunks
-- **Parquet**: Efficient storage format reduces I/O overhead
-- **Selective Loading**: Only load required columns when possible
-
-### API Efficiency
-- **Batch Processing**: TMDB enrichment processes movies sequentially
-- **Rate Limiting**: Built-in respect for API rate limits
-- **Caching**: Future enhancement for repeated pipeline runs
-
-### Parallelization
-- **Movie Enrichment**: Could be parallelized for better performance
-- **Feature Engineering**: Most operations are vectorized pandas operations
-- **I/O**: Atomic writes prevent data corruption
-
-## Monitoring and Debugging
 
 ### Logging
-Each pipeline stage provides detailed logging:
-
 ```python
 import logging
-logging.basicConfig(level=logging.INFO)
-
-# Run pipeline with logging
-processed_df, _ = programming_pipeline.run_original_Rdata_programming_pipeline(...)
-
+logger = logging.getLogger(__name__)
+logger.info("Message")
 ```
 
-### Common Issues
-1. **TMDB API Key**: Verify credentials in `.env`
-2. **Memory Limits**: Consider chunking for very large datasets
-3. **Missing Holidays**: Ensure `holidays.json` exists
-4. **R Dependencies**: Verify `rpy2` and R installation
+### TMDB Integration
+- `adapters/tmdb/tmdb.py` - High-level API
+- `adapters/tmdb/client.py` - Low-level HTTP
+- Includes retry logic, rate limiting, fuzzy matching
+
+### Feature Schemas
+- `features/schemas.py` - ML feature definitions
+- Order matters for sklearn models
+- Base → Categorical → TMDB → Boolean → Computed → Genres
+
+## Pipeline Dependencies
+
+```
+prepare-programming → ML_features.parquet → train-audience-ratings → model.joblib
+                                                                         ↓
+extract-whatson → catalog.parquet ─────────────────────────────────────→
+         ↓                                                               ↓
+         └─→ historical-programming.parquet → extract-IL-training-data
+```
+
+Run in this order:
+1. `prepare-programming` (generates ML features)
+2. `extract-whatson` (builds catalog)
+3. `historical-programming` (matches broadcasts to catalog)
+4. `train-audience-ratings` (trains model on ML features)
+5. `extract-IL-training-data` (needs historical + catalog + model)
+
+## Error Handling
+
+Each pipeline includes:
+- File existence validation
+- Column presence checks
+- TMDB API error handling (retry logic)
+- Logging for debugging
+
+## Performance Notes
+
+- **Parquet**: Efficient binary format
+- **Atomic writes**: Temp file → rename (prevents corruption)
+- **TMDB rate limits**: Built-in respect for API limits
+- **Memory**: Use chunking for very large datasets if needed
+- **Parallelization**: Could parallelize TMDB enrichment (not yet implemented)

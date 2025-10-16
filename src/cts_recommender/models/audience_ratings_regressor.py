@@ -4,7 +4,7 @@ Random Forest regressor for audience ratings prediction.
 import logging
 import pandas as pd
 from pathlib import Path
-from typing import Tuple, Optional, Dict, Any
+from typing import Tuple, Optional, Dict, Any, List
 import joblib
 
 from sklearn.ensemble import RandomForestRegressor
@@ -39,6 +39,7 @@ class AudienceRatingsRegressor:
         )
         self.scaler = StandardScaler()
         self.is_trained = False
+        self.feature_names_ = None  # Store feature names from training
 
     def prepare_data(
         self,
@@ -81,6 +82,10 @@ class AudienceRatingsRegressor:
             X_train_scaled = self.scaler.fit_transform(X_train)
             X_train = pd.DataFrame(X_train_scaled, columns=X_train.columns, index=X_train.index)
 
+        # Store feature names before training (critical for prediction)
+        self.feature_names_ = list(X_train.columns)
+        logger.info(f"Storing {len(self.feature_names_)} feature names for prediction")
+
         self.model = train_model(self.model, X_train, y_train, log_transform=log_transform)
         self.is_trained = True
 
@@ -122,8 +127,13 @@ class AudienceRatingsRegressor:
             raise ValueError("Model must be trained before saving")
 
         model_path.parent.mkdir(parents=True, exist_ok=True)
-        joblib.dump({'model': self.model, 'scaler': self.scaler, 'is_trained': self.is_trained}, model_path)
-        logger.info(f"Model saved to {model_path}")
+        joblib.dump({
+            'model': self.model,
+            'scaler': self.scaler,
+            'is_trained': self.is_trained,
+            'feature_names': self.feature_names_  # Save feature names
+        }, model_path)
+        logger.info(f"Model saved to {model_path} with {len(self.feature_names_)} features")
 
     def load_model(self, model_path: Path) -> None:
         if not model_path.exists():
@@ -133,4 +143,23 @@ class AudienceRatingsRegressor:
         self.model = saved_data['model']
         self.scaler = saved_data['scaler']
         self.is_trained = saved_data['is_trained']
-        logger.info(f"Model loaded from {model_path}")
+        self.feature_names_ = saved_data.get('feature_names', None)  # Load feature names (backward compatible)
+
+        if self.feature_names_ is None:
+            logger.warning("Model loaded without feature names - predictions may fail")
+        else:
+            logger.info(f"Model loaded from {model_path} with {len(self.feature_names_)} features")
+
+    def get_feature_names(self) -> List[str]:
+        """
+        Get ordered list of feature names expected by the model.
+
+        Returns:
+            List of feature names in the order expected by the model
+
+        Raises:
+            ValueError: If model hasn't been trained or loaded
+        """
+        if not self.is_trained or self.feature_names_ is None:
+            raise ValueError("Model must be trained or loaded before retrieving feature names")
+        return self.feature_names_

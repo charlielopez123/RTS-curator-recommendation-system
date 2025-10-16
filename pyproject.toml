@@ -15,6 +15,7 @@ dependencies = [
     "tqdm>=4.67.1",
     "scikit-learn>=1.6.1",
     "scipy>=1.11.0",
+    "lxml>=6.0.2",
 ]
 
 [build-system]
@@ -37,12 +38,15 @@ line-length = 100
 [dependency-groups]
 dev = [
     "ipykernel>=6.30.1",
+    "lxml-stubs>=0.5.1",
     "pytest>=8.4.2",
     "scikit-learn>=1.6.1",
+    "types-lxml>=2025.8.25",
 ]
 notebooks = [
     "ipywidgets>=8.1.7",
     "jupyterlab>=4.4.7",
+    "matplotlib>=3.9.4",
     "tqdm>=4.67.1",
 ]
 
@@ -51,3 +55,5 @@ cts-reco-prepare-programming = "cts_recommender.cli.prepare_programming:main"
 cts-reco-train-audience-ratings = "cts_recommender.cli.train_audience_ratings:main"
 cts-reco-extract-whatson = "cts_recommender.cli.whatson_extraction:main"
 cts-reco-historical-programming = "cts_recommender.cli.historical_programming:main"
+cts-reco-extract-IL-training-data = "cts_recommender.cli.IL_training_data:main"
+cts-reco-train-curator-model = "cts_recommender.cli.train_curator_model:main"

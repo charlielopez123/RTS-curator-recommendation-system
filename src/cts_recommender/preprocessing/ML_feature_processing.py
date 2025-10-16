@@ -5,6 +5,7 @@ from cts_recommender import RTS_constants
 from cts_recommender.features.TV_programming_Rdata_schema import ML_FEATURES
 from cts_recommender.io.readers import read_parquet
 from cts_recommender.preprocessing import feature_transformations
+from cts_recommender.preprocessing.movie_features import is_non_movie_title
 
 logger = logging.getLogger(__name__)
 
@@ -67,8 +68,8 @@ def build_X_features_movies_only(df_enriched: pd.DataFrame) -> pd.DataFrame:
     # Add movie age
     df = add_movie_age_feature(df)
 
-    # Drop columns that are not ML features (e.g., tmdb_id used for processing)
-    cols_to_drop = [col for col in ['tmdb_id'] if col in df.columns]
+    # Drop columns that are not ML features (e.g., tmdb_id used for processing, release_date after movie_age calculation)
+    cols_to_drop = [col for col in ['tmdb_id', 'release_date'] if col in df.columns]
     if cols_to_drop:
         df = df.drop(columns=cols_to_drop)
 
@@ -92,8 +93,25 @@ def build_X_features(processed_df: pd.DataFrame, df_enriched: pd.DataFrame) -> p
     """
 
     # Remove movies from processed_df (they're in df_enriched)
-    nonmovie_mask = ~processed_df['class_key'].isin(RTS_constants.ALL_MOVIE_CLASSKEYS)
-    nonmovie_df = processed_df.loc[nonmovie_mask].copy()
+    # Must match the same logic used in movie_features.enrich_programming_with_movie_metadata
+
+    # Standard movie filtering (RTS and France channels)
+    standard_movie_mask = processed_df['class_key'].isin(RTS_constants.ALL_MOVIE_CLASSKEYS)
+
+    # M6/TF1 special movie filtering (Code 1 + duration >= 75 min, excluding known non-movies)
+    m6_tf1_channels = ['M6_T_PL', 'TF1_T_PL']
+    m6_tf1_movie_mask = (
+        processed_df['channel'].isin(m6_tf1_channels) &
+        (processed_df['class_key'] == '1') &
+        (processed_df['duration_min'] >= 75) &
+        (~processed_df['title'].apply(is_non_movie_title))
+    )
+
+    # Combine both movie criteria
+    all_movie_mask = standard_movie_mask | m6_tf1_movie_mask
+
+    # Extract non-movies (inverse of movie mask)
+    nonmovie_df = processed_df.loc[~all_movie_mask].copy()
 
     # Process TMDB features for both movies and non-movies
     nonmovie_df = process_movie_tmdb_features(nonmovie_df, is_movie=False)
@@ -116,6 +134,10 @@ def build_X_features(processed_df: pd.DataFrame, df_enriched: pd.DataFrame) -> p
 
     # Add movie age
     full_df = add_movie_age_feature(full_df)
+
+    # Drop release_date after movie_age calculation (it has too many unique values for one-hot encoding)
+    if 'release_date' in full_df.columns:
+        full_df = full_df.drop(columns=['release_date'])
 
     # Final cleanup
     full_df = finalize_ml_features(full_df)

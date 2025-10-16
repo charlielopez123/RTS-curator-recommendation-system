@@ -43,3 +43,5 @@ WHATSON_RENAME_MAP: dict[str, str] = {
     'Nb Droits TV valides': 'valid_tv_rights_count',
     'Référence Externe': 'external_reference'
 }
+
+SHOWINGS_COLUMNS = ['first_broadcast_date', 'rebroadcast_date_1', 'rebroadcast_date_2', 'rebroadcast_date_3', 'rebroadcast_date_4']

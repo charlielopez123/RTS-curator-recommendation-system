@@ -139,7 +139,7 @@ def add_movie_age_feature(df: pd.DataFrame) -> pd.DataFrame:
     df (pd.DataFrame): DataFrame with 'release_date' column (YYYY-MM-DD format)
 
     Returns:
-    pd.DataFrame: DataFrame with 'movie_age' column and 'release_date' removed
+    pd.DataFrame: DataFrame with 'movie_age' column added (release_date is kept for diversity calculations)
     """
     df = df.copy()
 
@@ -149,8 +149,8 @@ def add_movie_age_feature(df: pd.DataFrame) -> pd.DataFrame:
     # Calculate age
     df['movie_age'] = pd.Timestamp('today').year - df["release_date_dt"].dt.year
 
-    # Drop intermediate columns
-    df = df.drop(columns=['release_date', 'release_date_dt'])
+    # Drop only the intermediate datetime column, keep release_date string for diversity reward calculations
+    df = df.drop(columns=['release_date_dt'])
 
     return df
 

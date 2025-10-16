@@ -49,20 +49,12 @@ def main():
         help="Path to save historical programming output (default: data/processed/whatson/historical_programming.parquet)"
     )
 
-    parser.add_argument(
-        "--out-stats",
-        type=Path,
-        default=cfg.processed_dir / "programming" / "historical_programming_broadcast_statistics.parquet",
-        help="Path to save broadcast statistics (default: data/processed/whatson/broadcast_statistics.parquet)"
-    )
-
     args = parser.parse_args()
 
     logger.info("Starting historical programming extraction...")
     logger.info(f"Programming file: {args.programming}")
     logger.info(f"Catalog file: {args.catalog}")
     logger.info(f"Output file: {args.out}")
-    logger.info(f"Statistics file: {args.out_stats}")
 
     # Validate input files exist
     if not args.programming.exists():
@@ -75,20 +67,17 @@ def main():
 
     # Ensure output directory exists
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out_stats.parent.mkdir(parents=True, exist_ok=True)
 
     # Run pipeline
     try:
         historical_df, out_file = historical_programming_pipeline.run_historical_programming_pipeline(
             programming_file=args.programming,
             catalog_file=args.catalog,
-            out_file=args.out,
-            out_stats_file=args.out_stats
+            out_file=args.out
         )
 
         logger.info("✓ Historical programming extraction completed successfully")
         logger.info(f"✓ Output saved to: {out_file}")
-        logger.info(f"✓ Statistics saved to: {args.out_stats}")
 
         return 0
 

@@ -12,13 +12,16 @@
     "classiques",
     "CLASSKEYS",
     "isin",
+    "ndarray",
     "Noël",
     "nonmovie",
     "Personnes",
     "Ramdam",
     "rdata",
+    "sess",
     "spéciale",
-    "tmdb"
+    "tmdb",
+    "whatson"
   ],
   "makefile.configureOnOpen": false
 }

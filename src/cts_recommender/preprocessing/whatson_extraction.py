@@ -241,7 +241,7 @@ def create_whatson_catalog(enriched_df: pd.DataFrame) -> pd.DataFrame:
     1. Deduplicates movies by processed_title (keeping row with most information)
     2. Assigns catalog_id (uses tmdb_id when available, custom ID otherwise)
     3. Converts date columns to datetime format
-    4. Adds computed features (times_shown, movie_age)
+    4. Adds computed features (duration_min, times_shown, movie_age)
     5. Returns catalog indexed by catalog_id
 
     Parameters:
@@ -283,15 +283,19 @@ def create_whatson_catalog(enriched_df: pd.DataFrame) -> pd.DataFrame:
 
     # Step 5: Add computed features
 
+    # duration_min - parse duration string to minutes
+    if 'duration' in catalog_df.columns:
+        catalog_df['duration_min'] = catalog_df['duration'].apply(parse_duration_minutes).astype('float64')
+
     # times_shown - count non-null broadcast dates (date_diff_1 and date_rediff_1-4)
     broadcast_date_cols = ['date_diff_1', 'date_rediff_1', 'date_rediff_2', 'date_rediff_3', 'date_rediff_4']
     available_broadcast_cols = [col for col in broadcast_date_cols if col in catalog_df.columns]
-    catalog_df.loc[:, 'times_shown'] = catalog_df[available_broadcast_cols].notna().sum(axis=1)
+    catalog_df['times_shown'] = catalog_df[available_broadcast_cols].notna().sum(axis=1).astype('Int64')
 
     # movie_age - calculate from release_date
     if 'release_date' in catalog_df.columns:
         release_dates = pd.to_datetime(catalog_df['release_date'], errors='coerce')
-        catalog_df.loc[:, 'movie_age'] = (pd.Timestamp.now() - release_dates).dt.days // 365
+        catalog_df['movie_age'] = ((pd.Timestamp.now() - release_dates).dt.days // 365).astype('Int64')
 
     # Step 6: Reset index and set catalog_id as index
     catalog_df = catalog_df.reset_index(drop=True)

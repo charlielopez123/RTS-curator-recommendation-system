@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     interim_dir: Path = data_root / "interim"
     processed_dir: Path = data_root / "processed"
     reference_dir: Path = data_root / "reference"
+    models_dir: Path = data_root / "models"
 
     # ----- Datasets -----
     original_rdata_programming: Path = raw_dir / "original_R_dataset.RData"

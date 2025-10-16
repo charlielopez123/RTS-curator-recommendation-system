@@ -10,15 +10,99 @@ import re
 
 logger = logging.getLogger(__name__)
 
+def detect_title_language(title: str) -> str:
+    """
+    Detect the likely language of a movie title to optimize TMDB search.
+
+    Strategy:
+    - Check for common language indicators in first 5 words (most reliable)
+    - Supports: English, French, Italian, German, Spanish
+    - Default to French for RTS catalog context (Swiss broadcaster)
+
+    Args:
+        title: The movie title to analyze
+
+    Returns:
+        Language code: 'en', 'fr', 'it', 'de', or 'es'
+
+    Examples:
+        "The Dark Knight" -> 'en'
+        "Le Fabuleux Destin d'Amélie Poulain" -> 'fr'
+        "La vita è bella" -> 'it'
+        "Der Untergang" -> 'de'
+        "El laberinto del fauno" -> 'es'
+    """
+    if not title:
+        return 'fr'
+
+    title_lower = title.lower()
+    words = title_lower.split()
+
+    # Common language indicators (articles, prepositions, conjunctions)
+    # These are words that are distinctive and unlikely to appear in other languages
+    english_indicators = ['the', 'of', 'and', 'you', 'an', 'in', 'to', 'for', 'with', 'at', 'from', 'about', 'aka', 'on']
+    french_indicators = ['le', 'la', 'les', 'un', 'une', 'des', 'du', 'de', 'et', 'dans', 'pour', 'avec', 'quand', 'comme']
+    italian_indicators = ['il', 'lo', 'gli', 'uno', 'del', 'della', 'dello', 'degli', 'delle', 'di', 'che', 'per', 'con', 'come', 'dove', 'quando']
+    german_indicators = ['der', 'die', 'das', 'den', 'dem', 'des', 'ein', 'eine', 'einen', 'einem', 'eines', 'und', 'von', 'mit', 'für', 'aus']
+    spanish_indicators = ['el', 'los', 'un', 'unos', 'unas', 'del', 'al', 'y', 'en', 'con', 'para', 'por', 'como', 'que', 'donde']
+
+    # Check first 5 words for language indicators (most reliable)
+    first_words = words[:5]
+
+    # Count matches for each language
+    english_matches = sum(1 for word in first_words if word in english_indicators)
+    french_matches = sum(1 for word in first_words if word in french_indicators)
+    italian_matches = sum(1 for word in first_words if word in italian_indicators)
+    german_matches = sum(1 for word in first_words if word in german_indicators)
+    spanish_matches = sum(1 for word in first_words if word in spanish_indicators)
+
+    # Create a dictionary of language matches
+    language_scores = {
+        'en': english_matches,
+        'fr': french_matches,
+        'it': italian_matches,
+        'de': german_matches,
+        'es': spanish_matches
+    }
+
+    # Find the language with the most matches
+    max_matches = max(language_scores.values())
+
+    # If no matches found, default to French (RTS context)
+    if max_matches == 0:
+        return 'fr'
+
+    # Return the language with the highest score
+    # In case of ties, priority order: en, fr, it, de, es
+    for lang in ['en', 'fr', 'it', 'de', 'es']:
+        if language_scores[lang] == max_matches:
+            return lang
+
+    # Fallback (should never reach here)
+    return 'fr'
+
 class TMDB_API():
     """Wrapper class for TMDB API interactions"""
     def __init__(self):
         self._client:  TMDB_APIClient = TMDB_APIClient()
 
 
-    def search_movie(self, title: str) -> Dict[str, Any]:
-        """Searches for a movie by title and returns the different potential TMDB ids"""
-        response = self._client.get('search/movie', params={'query': title, 'include_adult': 'true', 'language': 'fr'})
+    def search_movie(self, title: str, language: str = None) -> Dict[str, Any]:
+        """
+        Searches for a movie by title and returns the different potential TMDB ids.
+
+        Args:
+            title: Movie title to search for
+            language: Language code ('en', 'fr', etc.). If None, auto-detects from title.
+
+        Returns:
+            TMDB API response with search results
+        """
+        if language is None:
+            language = detect_title_language(title)
+            logger.debug(f"Auto-detected language '{language}' for title: {title}")
+
+        response = self._client.get('search/movie', params={'query': title, 'include_adult': 'true', 'language': language})
         return response
 
     def get_movie_details(self, movie_id: str) -> Dict[str, Any] | None:
@@ -41,20 +125,29 @@ class TMDB_API():
             title = details["title"]
         return title
     
-    def find_best_match(self, title: str, known_runtime, top_n = 10) -> int | None:
+    def find_best_match(self, title: str, known_runtime, top_n = 10, language: str = None) -> int | None:
         """
-        Searches for a movie by title and finds the best match based on  title and uses movie duration as a secondary factor.
-        """
-        
+        Searches for a movie by title and finds the best match based on title and uses movie duration as a secondary factor.
 
-        response = self.search_movie(title)
+        Args:
+            title: Movie title to search for
+            known_runtime: Expected runtime in minutes (used for tie-breaking)
+            top_n: Number of top results to consider (default: 10)
+            language: Language code ('en', 'fr', etc.). If None, auto-detects from title.
+
+        Returns:
+            TMDB movie ID of the best match, or None if no match found
+        """
+
+
+        response = self.search_movie(title, language=language)
         num_results = len(response['results'])
 
 
 
         # If no results found initially try decomposing the title
         if num_results == 0:
-            best_id = self.find_best_id_decomposed(title, known_runtime)
+            best_id = self.find_best_id_decomposed(title, known_runtime, language=language)
             return best_id
         
         # If only one result is found return it
@@ -104,7 +197,7 @@ class TMDB_API():
                 best_id = id
         return best_id
     
-    def find_best_id_decomposed(self, title:str, known_runtime: int) -> int | None:
+    def find_best_id_decomposed(self, title:str, known_runtime: int, language: str = None) -> int | None:
         """
         If no results are found for the full title, try to decompose the title by common separators.
         Handles titles like:
@@ -112,6 +205,11 @@ class TMDB_API():
         - 'Birds of prey (et la fabuleuse histoire de Harley Quinn)'
         - 'Movie: Subtitle'
         - 'Title - Another Title'
+
+        Args:
+            title: Movie title to decompose and search
+            known_runtime: Expected runtime in minutes
+            language: Language code for TMDB search. If None, auto-detects for each part.
         """
 
         # Try extracting content from parentheses first (e.g., 'Title (English Title)')
@@ -124,8 +222,9 @@ class TMDB_API():
                 # Skip if content inside parentheses is a year or date (e.g., '(2023)' or '(1995)')
                 if not re.match(r'^\d{4}$', title_inside):
                     # Try inside parentheses first (often the English title), then the part before
+                    # Each part will auto-detect its own language
                     for part in (title_inside, title_before):
-                        best_id = self.find_best_match(part, known_runtime)
+                        best_id = self.find_best_match(part, known_runtime, language=None)
                         if best_id:
                             return best_id
 
@@ -133,14 +232,14 @@ class TMDB_API():
         if ":" in title:
             left, right = title.split(":", 1)
             for part in (left.strip(), right.strip()):
-                best_id = self.find_best_match(part, known_runtime)
+                best_id = self.find_best_match(part, known_runtime, language=None)
                 if best_id:
                     return best_id
 
         if "-" in title:
             left, right = title.split("-", 1)
             for part in (left.strip(), right.strip()):
-                best_id = self.find_best_match(part, known_runtime)
+                best_id = self.find_best_match(part, known_runtime, language=None)
                 if best_id:
                     return best_id
 

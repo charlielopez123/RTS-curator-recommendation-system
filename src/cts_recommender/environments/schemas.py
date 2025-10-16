@@ -13,6 +13,10 @@ class Season(Enum):
     AUTUMN = "autumn"
     WINTER = "winter"
 
+class Channel(Enum):
+    RTS1 = "RTS 1"
+    RTS2 = "RTS 2"
+
 @dataclass
 class Context:
     """Programming context for decision making"""
@@ -20,5 +24,6 @@ class Context:
     day_of_week: int  # 0=Monday, 6=Sunday
     month: int
     season: Season
+    channel: Channel
 
 
