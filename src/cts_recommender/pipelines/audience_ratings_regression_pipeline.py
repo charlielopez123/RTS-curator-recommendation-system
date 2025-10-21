@@ -7,7 +7,7 @@ from typing import Tuple, Optional, Dict, Any
 
 from cts_recommender.utils.reproducibility import set_global_seed
 from cts_recommender.settings import get_settings
-from cts_recommender.models.audience_ratings_regressor import AudienceRatingsRegressor
+from cts_recommender.models.audience_regression.audience_ratings_regressor import AudienceRatingsRegressor
 
 logger = logging.getLogger(__name__)
 

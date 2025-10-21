@@ -20,11 +20,11 @@ import numpy as np
 from sklearn.pipeline import Pipeline
 
 from cts_recommender.imitation_learning.times_shown_tracker import TimesShownTracker
-from cts_recommender.models.audience_ratings_regressor import AudienceRatingsRegressor
+from cts_recommender.models.audience_regression.audience_ratings_regressor import AudienceRatingsRegressor
 from cts_recommender.competition.competitor import CompetitorDataManager, MovieCompetitorContext
 from cts_recommender.environments.reward_components import diversity
 from cts_recommender.environments.schemas import Context, Channel
-from cts_recommender.preprocessing import dates
+from cts_recommender.utils import dates
 
 logger = logging.getLogger(__name__)
 

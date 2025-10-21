@@ -10,7 +10,7 @@ class TimeSlot(Enum):
 class Season(Enum):
     SPRING = "spring"
     SUMMER = "summer"
-    AUTUMN = "autumn"
+    AUTUMN = "fall"  # Using 'fall' to match ML features and get_season() function
     WINTER = "winter"
 
 class Channel(Enum):

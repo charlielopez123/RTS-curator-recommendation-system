@@ -7,9 +7,9 @@ import logging
 
 from cts_recommender.RTS_constants import COMPETITOR_CHANNELS, INTEREST_CHANNELS
 from cts_recommender.environments.reward import RewardCalculator
-from cts_recommender.models.audience_ratings_regressor import AudienceRatingsRegressor
+from cts_recommender.models.audience_regression.audience_ratings_regressor import AudienceRatingsRegressor
 from cts_recommender.competition.competitor import CompetitorDataManager
-from cts_recommender.environments.schemas import Context, TimeSlot, Season
+from cts_recommender.environments.schemas import Context, TimeSlot, Season, Channel
 from cts_recommender.utils.scalers import make_safe_positive_pipeline
 
 logger = logging.getLogger(__name__)
@@ -101,12 +101,11 @@ class TVProgrammingEnvironment:
         """
         Convert context to feature vector from either a given Context or previous context_cache_key
 
-        feature_vector = [time_slot_hot (4,), day_of_week_hot (7,), is_weekend, season_one_hot(4,1), channel_one_hot(2,1)] -> shape: (18, 1)
+        feature_vector = [time_slot_hot (4,), day_of_week_hot (7,), is_weekend (1,), season_one_hot (4,), channel_one_hot (2,)] -> shape: (18,)
 
-        Note: Channel is part of Context but NOT included in feature vector here since it's
-        used as a categorical feature in the audience model directly (one-hot encoded by sklearn).
+        Channel is now included in the feature vector to allow CTS to learn channel-specific signal preferences.
         """
-        # Cache key for efficiency (now includes channel)
+        # Cache key for efficiency (includes channel)
         if isinstance(context, tuple):
             cache_key = context
         else:
@@ -118,11 +117,12 @@ class TVProgrammingEnvironment:
 
         # Extract values from context (handle both Context object and tuple)
         if isinstance(context, tuple):
-            hour, day_of_week, _, season_value, _ = context
+            hour, day_of_week, _, season_value, channel_value = context
         else: # Context object
             hour = context.hour
             day_of_week = context.day_of_week
             season_value = context.season.value
+            channel_value = context.channel.value
 
         features = []
 
@@ -148,7 +148,12 @@ class TVProgrammingEnvironment:
         seasons = [season.value for season in Season]
         season_features = [1 if season == season_value else 0 for season in seasons]
         features.extend(season_features)
-        
+
+        # Channel one-hot (RTS1, RTS2)
+        channels = [channel.value for channel in Channel]
+        channel_features = [1 if channel == channel_value else 0 for channel in channels]
+        features.extend(channel_features)
+
         feature_vector = np.array(features, dtype=np.float32)
         self.context_features_cache[cache_key] = feature_vector
         return feature_vector, cache_key

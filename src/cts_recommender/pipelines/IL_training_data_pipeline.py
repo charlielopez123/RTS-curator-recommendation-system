@@ -34,7 +34,7 @@ import joblib
 from typing import Optional
 
 from cts_recommender.environments.TV_environment import TVProgrammingEnvironment
-from cts_recommender.models.audience_ratings_regressor import AudienceRatingsRegressor
+from cts_recommender.models.audience_regression.audience_ratings_regressor import AudienceRatingsRegressor
 from cts_recommender.imitation_learning.IL_training import HistoricalDataProcessor
 from cts_recommender.io import readers
 from cts_recommender.settings import get_settings

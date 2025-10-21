@@ -12,7 +12,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 from cts_recommender.features.TV_programming_Rdata_schema import TARGET_FEATURE
-from cts_recommender.models.training import train_model, evaluate_model
+from cts_recommender.models.audience_regression.training import train_model, evaluate_model
 from cts_recommender.io.readers import read_parquet
 
 logger = logging.getLogger(__name__)

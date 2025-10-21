@@ -14,7 +14,7 @@ from datetime import datetime
 from cts_recommender.adapters.tmdb.tmdb import TMDB_API
 from cts_recommender.utils import text_cleaning
 from cts_recommender.features.catalog_schema import HISTORICAL_PROGRAMMING_DTYPES, enforce_dtypes
-from cts_recommender.preprocessing import dates
+from cts_recommender.utils import dates
 from cts_recommender.io.readers import read_json
 from cts_recommender.settings import get_settings
 

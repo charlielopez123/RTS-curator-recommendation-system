@@ -1,5 +1,5 @@
 from datetime import date
-from cts_recommender.preprocessing.dates import get_season, is_holiday_indexed, build_holiday_index
+from cts_recommender.utils.dates import get_season, is_holiday_indexed, build_holiday_index
 
 def test_get_season():
     assert get_season(date(2025, 6, 1)) == "summer"

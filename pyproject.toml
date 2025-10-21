@@ -47,6 +47,7 @@ notebooks = [
     "ipywidgets>=8.1.7",
     "jupyterlab>=4.4.7",
     "matplotlib>=3.9.4",
+    "seaborn>=0.13.0",
     "tqdm>=4.67.1",
 ]
 

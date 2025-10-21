@@ -14,13 +14,8 @@ from sklearn.metrics import (
     accuracy_score,
     brier_score_loss,
     classification_report,
-    f1_score,
     log_loss,
-    precision_recall_curve,
-    precision_score,
-    recall_score,
     roc_auc_score,
-    roc_curve,
 )
 from sklearn.model_selection import train_test_split
 
@@ -148,6 +143,27 @@ def _calibrate_model(
 
     calibrated_model.fit(X_cal, y_cal)
     return calibrated_model
+
+
+def load_curator_model(model_file: str) -> CalibratedClassifierCV:
+    """
+    Load a trained and calibrated curator logistic regression model.
+
+    Args:
+        model_file: Path to the saved model joblib file.
+
+    Returns:
+        Loaded CalibratedClassifierCV model ready for prediction.
+
+    Example:
+        >>> model = load_curator_model("data/models/curator_logistic_model.joblib")
+        >>> probabilities = model.predict_proba(X)[:, 1]
+        >>> predictions = model.predict(X)
+    """
+    logger.info(f"Loading curator model from {model_file}")
+    model = joblib.load(model_file)
+    logger.info("Curator model loaded successfully")
+    return model
 
 
 def train_curator_model(training_data_file: str, model_output_file: str) -> None:
