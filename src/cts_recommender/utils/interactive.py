@@ -46,11 +46,13 @@ def display_recommendations(
     for i, rec in enumerate(recommendations, 1):
         movie = catalog_df.loc[rec['catalog_id']]
 
-        # Get predicted audience rating
-        context_features, _ = env.get_context_features(context)
-        movie_features = env.get_movie_features(rec['catalog_id'])
-        combined_features = np.concatenate([context_features, movie_features])
-        predicted_rating = env.audience_model.model.predict(combined_features.reshape(1, -1))[0]
+        # Get predicted audience rating (raw rt_m value, not normalized)
+        _, predicted_rt_m = env.reward._calculate_audience_reward(
+            context=context,
+            movie=movie,
+            air_date=test_date,
+            return_raw_prediction=True
+        )
 
         # Get rights end date
         rights_end = movie.get('tv_rights_end', pd.NaT)
@@ -62,7 +64,7 @@ def display_recommendations(
         print(f"[{i}] {movie['title']} ({movie.get('release_date', 'N/A')[:4]})")
         print(f"    ID: {rec['catalog_id']}")
         print(f"    Overall Score: {rec['score']:.4f}")
-        print(f"    Predicted Audience: {predicted_rating:.2f}% | Rights End: {rights_end_str}\n")
+        print(f"    Predicted Audience: {predicted_rt_m:.2f}% | Rights End: {rights_end_str}\n")
 
         # Display signal contributions
         print("    Signal Contributions (weighted by CTS):")

@@ -151,7 +151,7 @@ class RewardCalculator:
 
         return rewards
 
-    def _calculate_audience_reward(self, context: Context, movie: pd.Series, air_date: pd.Timestamp) -> float:
+    def _calculate_audience_reward(self, context: Context, movie: pd.Series, air_date: pd.Timestamp, return_raw_prediction: bool = False):
         """Calculate reward based on predicted audience ratings.
 
         Uses trained audience model to predict rt_m for a broadcast context + movie,
@@ -161,9 +161,11 @@ class RewardCalculator:
             context: Context with temporal features (hour, day_of_week, month, season, channel)
             movie: Movie catalog row with TMDB metadata
             air_date: Broadcast date (for holiday lookup)
+            return_raw_prediction: If True, return tuple of (normalized_reward, raw_rt_m_prediction)
 
         Returns:
-            Normalized audience reward in [0.0, 1.0]
+            If return_raw_prediction=False: Normalized audience reward in [0.0, 1.0]
+            If return_raw_prediction=True: Tuple of (normalized_reward, raw_rt_m_prediction)
 
         Raises:
             ValueError: If audience model not trained/loaded
@@ -246,7 +248,10 @@ class RewardCalculator:
         predicted_rt_m = self.audience_model.model.predict(feature_df)[0]
         normalized_reward = float(self.scaler_dict['rt_m'].transform(pd.DataFrame({'rt_m': [predicted_rt_m]})).squeeze())
 
-        return np.clip(normalized_reward, 0.0, 1.0)
+        if return_raw_prediction:
+            return np.clip(normalized_reward, 0.0, 1.0), predicted_rt_m
+        else:
+            return np.clip(normalized_reward, 0.0, 1.0)
 
     def _calculate_competition_reward(self, air_date: pd.Timestamp, movie: pd.Series) -> float:
         """Calculate reward based on competitive advantage.
