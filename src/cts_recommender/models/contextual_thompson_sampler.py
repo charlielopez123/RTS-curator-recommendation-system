@@ -481,7 +481,7 @@ class ContextualThompsonSampler:
         )
 
         # Save RNG state for reproducibility
-        rng_state = self.rng.bit_generator.state
+        rng_state = self.rng.get_state()
         with open(path.with_suffix(".rng.pkl"), "wb") as f:
             pickle.dump(rng_state, f)
 
@@ -529,8 +529,7 @@ class ContextualThompsonSampler:
         if rng_file.exists():
             with open(rng_file, "rb") as f:
                 state = pickle.load(f)
-            sampler.rng = np.random.default_rng()
-            sampler.rng.bit_generator.state = state
+            sampler.rng.set_state(state)
 
         return sampler
 

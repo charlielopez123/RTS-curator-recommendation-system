@@ -77,7 +77,7 @@ class RewardCalculator:
                             air_date: pd.Timestamp,
                             context: Context,
                             times_shown_tracker: TimesShownTracker | None = None
-                            ):
+                            ) -> Dict[str, float]:
         """
         Calculate multi-objective reward for programming a movie given a context.
 
@@ -150,8 +150,6 @@ class RewardCalculator:
         rewards['rights'] = self._calculate_rights_urgency_reward(air_date, movie_catalog_row)
 
         return rewards
-
-
 
     def _calculate_audience_reward(self, context: Context, movie: pd.Series, air_date: pd.Timestamp) -> float:
         """Calculate reward based on predicted audience ratings.
@@ -249,8 +247,6 @@ class RewardCalculator:
         normalized_reward = float(self.scaler_dict['rt_m'].transform(pd.DataFrame({'rt_m': [predicted_rt_m]})).squeeze())
 
         return np.clip(normalized_reward, 0.0, 1.0)
-
-
 
     def _calculate_competition_reward(self, air_date: pd.Timestamp, movie: pd.Series) -> float:
         """Calculate reward based on competitive advantage.
@@ -447,7 +443,7 @@ class RewardCalculator:
             available_historical_df = self.historical_df[self.historical_df['date'] < air_date].copy()
             history_slice = available_historical_df.iloc[-300:]
             for _, hist_row in history_slice.iterrows():
-                if hist_row['catalog_id'] == movie.name:
+                if pd.notna(hist_row['catalog_id']) and pd.notna(movie.name) and hist_row['catalog_id'] == movie.name:
                     hist_date = hist_row['date']
                     if last_showing is None or hist_date > last_showing:
                         last_showing: pd.Timestamp | None = hist_date

@@ -26,4 +26,9 @@ class Context:
     season: Season
     channel: Channel
 
+    def day_of_week_name(self) -> str:
+        """Return the name of the day of the week."""
+        days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        return days[self.day_of_week]
+
 

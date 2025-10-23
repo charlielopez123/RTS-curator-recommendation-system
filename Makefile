@@ -16,8 +16,14 @@ OUT_HISTORICAL_PROGRAMMING ?= data/processed/programming/historical_programming.
 
 OUT_IL_TRAINING_DATA ?= data/processed/IL/training_data.joblib
 OUT_CURATOR_MODEL ?= data/models/curator_logistic_model.joblib
+OUT_CTS_MODEL ?= data/models/cts_model.npz
 
 LOG_LEVEL ?= INFO
+
+##--------- Hyperparameters Config -------------------------------------------
+CURATOR_GAMMA ?=0.4 # Weighting for curator signal in IL reward function
+CTS_GAMMA ?=0.3 # Curator signal weight for CTS initialization (30% curator, 70% value signals)
+
 
 # SSL Configuration - Use certifi's CA bundle for HTTPS requests (macOS fix)
 export REQUESTS_CA_BUNDLE := $(shell .venv/bin/python -c "import certifi; print(certifi.where())" 2>/dev/null)
@@ -25,30 +31,33 @@ export REQUESTS_CA_BUNDLE := $(shell .venv/bin/python -c "import certifi; print(
 # ---- Defaults -------------------------------------------------------------
 .SHELLFLAGS := -eu -o pipefail -c
 .DEFAULT_GOAL := help
-.PHONY: help setup bootstrap lint fmt fix test prepare-programming train-audience-ratings extract-whatson historical-programming extract-IL-training-data train-curator-model run-all clean env
+.PHONY: help setup bootstrap lint fmt fix test prepare-programming train-audience-ratings extract-whatson historical-programming extract-IL-training-data train-curator-model train-cts-model interactive-test run-all clean env
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | sed 's/:.*## / - /'
 
 run-all: ## Run the complete end-to-end pipeline
 	@echo "=== Starting complete pipeline ==="
-	@echo "Step 1/6: Processing programming data (RData -> processed -> enriched -> ML features)"
+	@echo "Step 1/7: Processing programming data (RData -> processed -> enriched -> ML features)"
 	$(MAKE) prepare-programming
 	@echo ""
-	@echo "Step 2/6: Extracting WhatsOn catalog"
+	@echo "Step 2/7: Extracting WhatsOn catalog"
 	$(MAKE) extract-whatson
 	@echo ""
-	@echo "Step 3/6: Building historical programming (matching broadcasts to catalog)"
+	@echo "Step 3/7: Building historical programming (matching broadcasts to catalog)"
 	$(MAKE) historical-programming
 	@echo ""
-	@echo "Step 4/6: Training audience ratings model"
+	@echo "Step 4/7: Training audience ratings model"
 	$(MAKE) train-audience-ratings
 	@echo ""
-	@echo "Step 5/6: Extracting IL training data"
+	@echo "Step 5/7: Extracting IL training data"
 	$(MAKE) extract-IL-training-data
 	@echo ""
-	@echo "Step 6/6: Training curator model"
+	@echo "Step 6/7: Training curator model"
 	$(MAKE) train-curator-model
+	@echo ""
+	@echo "Step 7/7: Training CTS model with warm-start"
+	$(MAKE) train-cts-model
 	@echo ""
 	@echo "=== Pipeline complete! ==="
 	@echo "Outputs:"
@@ -60,6 +69,7 @@ run-all: ## Run the complete end-to-end pipeline
 	@echo "  - Audience Model: $(MODEL_OUTPUT)"
 	@echo "  - IL Training Data: $(OUT_IL_TRAINING_DATA)"
 	@echo "  - Curator Model: $(OUT_CURATOR_MODEL)"
+	@echo "  - CTS Model: $(OUT_CTS_MODEL)"
 
 setup: ## Install / sync deps
 	uv sync
@@ -112,7 +122,8 @@ extract-IL-training-data: ## Extract imitation learning training data
 		--historical $(OUT_HISTORICAL_PROGRAMMING) \
 		--catalog $(OUT_WHATSON_CATALOG) \
 		--audience-model $(MODEL_OUTPUT) \
-		--out $(OUT_IL_TRAINING_DATA)
+		--out $(OUT_IL_TRAINING_DATA) \
+		--gamma $(CURATOR_GAMMA)
 
 train-curator-model: ## Train curator logistic regression model
 	mkdir -p $(dir $(OUT_CURATOR_MODEL))
@@ -120,6 +131,20 @@ train-curator-model: ## Train curator logistic regression model
 		--training-data $(OUT_IL_TRAINING_DATA) \
 		--out $(OUT_CURATOR_MODEL) \
 
+train-cts-model: ## Train Contextual Thompson Sampler with warm-start
+	mkdir -p $(dir $(OUT_CTS_MODEL))
+	LOG_LEVEL=$(LOG_LEVEL) uv run cts-reco-train-cts-model \
+		--training-data $(OUT_IL_TRAINING_DATA) \
+		--out $(OUT_CTS_MODEL) \
+		--gamma $(CTS_GAMMA)
+
+interactive-test: ## Run interactive CTS testing in terminal
+	LOG_LEVEL=$(LOG_LEVEL) uv run cts-reco-interactive-test \
+		--cts-model $(OUT_CTS_MODEL) \
+		--curator-model $(OUT_CURATOR_MODEL) \
+		--audience-model $(MODEL_OUTPUT) \
+		--catalog $(OUT_WHATSON_CATALOG) \
+		--historical-programming $(OUT_HISTORICAL_PROGRAMMING)
 
 clean: ## Clean caches
 	rm -rf .pytest_cache .ruff_cache dist build *.egg-info

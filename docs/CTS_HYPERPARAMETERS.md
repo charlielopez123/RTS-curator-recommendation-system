@@ -14,6 +14,102 @@ The key insight: **hyperparameters control the SCALE of randomness and updates r
 
 ---
 
+## Recommended Production Settings
+
+Based on experiments in [experiments/notebooks/IL_testing.ipynb](../experiments/notebooks/IL_testing.ipynb):
+
+### CTS Initialization
+
+```python
+from cts_recommender.models.contextual_thompson_sampler import ContextualThompsonSampler
+from cts_recommender.imitation_learning.IL_constants import PSEUDO_REWARD_WEIGHTS
+
+cts = ContextualThompsonSampler(
+    num_signals=6,              # 5 value signals + 1 curator signal
+    context_dim=18,             # Context feature dimension
+    lr=0.05,                    # Learning rate for online updates
+    expl_scale=0.001,           # Exploration noise scale
+    ema_decay=0.999,            # EMA decay for Hessian approximation
+    h0=0.1,                     # Initial Hessian value
+    tau=2.0,                    # Temperature for softmax
+    alpha=0.3,                  # Uniform mixing weight
+    weight_decay=1e-4,          # L2 regularization
+    match_loss_weight=0.5,      # Weight for signal matching loss
+    random_state=cfg.random_seed
+)
+
+# Initialize with target weights based on curator objectives
+gamma = 0.3  # Curator signal weight (30%)
+pseudo_weights = np.array([
+    PSEUDO_REWARD_WEIGHTS['audience'],      # 0.4
+    PSEUDO_REWARD_WEIGHTS['competition'],   # 0.15
+    PSEUDO_REWARD_WEIGHTS['diversity'],     # 0.1
+    PSEUDO_REWARD_WEIGHTS['novelty'],       # 0.2
+    PSEUDO_REWARD_WEIGHTS['rights']         # 0.15
+])
+
+target_weights = np.zeros(6)
+target_weights[:5] = (1 - gamma) * pseudo_weights  # [0.28, 0.105, 0.07, 0.14, 0.105]
+target_weights[5] = gamma                          # 0.3
+
+cts.initialize_with_target_weights(target_weights)
+```
+
+### Warm-Start Training
+
+```python
+history = cts.warm_start(
+    contexts=context_features,
+    signals=train_signals,
+    rewards=reward_targets,
+    epochs=1,
+    lr=0.01,           # Reduced for stability (vs 0.05 for online)
+    expl_scale=1e-4,   # Reduced for deterministic learning (vs 0.001)
+    ema_decay=0.9999,  # Increased for smooth curvature (vs 0.999)
+    weight_decay=cts.weight_decay,
+    verbose=True
+)
+```
+
+### Key Parameter Explanations
+
+#### Learning & Exploration
+- **`lr=0.05`**: Learning rate for online updates after warm-start
+- **`expl_scale=0.001`**: Exploration noise variance scale. With `h0=0.1`, initial noise std ≈ 0.1
+- **`h0=0.1`**: Initial Hessian diagonal value. Controls starting exploration magnitude
+
+#### Softmax & Weight Distribution
+- **`tau=2.0`**: Temperature for softmax. Higher values flatten the distribution, promoting more uniform weights
+- **`alpha=0.3`**: Uniform mixing weight. **Prevents complete diminishing of any signal weight** - ensures all signals maintain minimum influence even when model heavily favors others. Final weights = 0.7×softmax + 0.3×uniform
+
+#### EMA Decay
+- **`ema_decay=0.999`**: EMA decay for Hessian approximation. **Extremely close to 1.0 because squared gradient updates are typically very small (≈1e-4 to 1e-6 scale)**, requiring slow accumulation to build accurate curvature estimates. Memory window ≈ 1/(1-0.999) = 1000 updates
+
+#### Regularization
+- **`weight_decay=1e-4`**: L2 regularization to prevent overfitting
+- **`match_loss_weight=0.5`**: Weight for signal matching loss (when curator signals provided)
+
+#### Weight Initialization
+- **`gamma=0.3`**: Curator signal weight (30%). **Changed from initial gamma=0.6 to better align with curator objectives**
+  - The original **gamma=0.6** was used during **IL training data generation** to put more emphasis on positive samples for extracting pseudo-rewards
+  - For CTS deployment, **gamma=0.3** better reflects actual curator decision-making priorities
+- Remaining 70% distributed proportionally across 5 value signals:
+  - **Audience: 28%** (0.7 × 0.4) - Highest priority among value signals
+  - **Novelty: 14%** (0.7 × 0.2)
+  - **Competition: 10.5%** (0.7 × 0.15)
+  - **Rights: 10.5%** (0.7 × 0.15)
+  - **Diversity: 7%** (0.7 × 0.1)
+
+#### Warm-Start Configuration
+**These hyperparameters are temporarily lowered during offline warm-start to ensure stability throughout the many training samples (7,206 samples), then automatically restored for online learning:**
+
+- **`lr=0.01`** (vs 0.05 online): Reduced learning rate prevents overshooting across large batch
+- **`expl_scale=1e-4`** (vs 0.001 online): 10× less exploration noise for deterministic offline learning
+- **`ema_decay=0.9999`** (vs 0.999 online): Even slower curvature adaptation prevents instability from rapid changes
+- **`epochs=1`**: Single pass through historical data is sufficient with proper learning rate
+
+---
+
 ## Hyperparameters and Their Scales
 
 ### `lr` - Learning Rate
@@ -24,26 +120,27 @@ The key insight: **hyperparameters control the SCALE of randomness and updates r
 **Formula**: `U = U - lr * grad_U`
 
 **Relationship to parameters**:
-- Gradients have scale O(1) (from backprop through softmax and loss)
-- If `lr = 0.01`, parameters change by ~0.01 per update
-- Starting from `U = 0`, after 100 updates with consistent gradient, `U` could reach O(1)
+- Gradients have scale O(0.01-0.1) (from backprop through softmax and loss)
+- If `lr = 0.01`, parameters change by ~0.001 per update
+- Starting from `U = 0`, after 1000 updates with consistent gradient, `U` could reach O(1)
 
 **Tuning logic**:
 ```
-lr = 0.001  → Takes ~1000 steps to build up U to O(1) scale
-lr = 0.01   → Takes ~100 steps to build up U to O(1) scale  ✓ CHOSEN
+lr = 0.001  → Takes ~10000 steps to build up U to O(1) scale
+lr = 0.01   → Takes ~1000 steps to build up U to O(1) scale  ✓ CHOSEN (warm-start)
+lr = 0.05   → Takes ~200 steps, good for online adaptation  ✓ CHOSEN (online)
 lr = 0.1    → Takes ~10 steps, but risks overshooting
 ```
 
-**Why 0.01?**
-- Warm-start has ~7000 samples, 3 epochs → ~21,000 gradient steps
-- Want to converge in ~1000-5000 steps, leaving room for fine-tuning
-- Faster than 0.001, more stable than 0.1
+**Why 0.01 for warm-start, 0.05 for online?**
+- Warm-start has ~7000 samples, 1 epoch → ~7,000 gradient steps
+- Want stable convergence over these samples without overshooting
+- Online learning needs faster adaptation to new patterns → higher lr
 
 ---
 
 ### `expl_scale` - Exploration Noise Variance Scale
-**Scale**: `0.01` to `1.0`
+**Scale**: `0.0001` to `1.0`
 
 **What it controls**: Variance of Gaussian noise added to parameters during Thompson Sampling.
 
@@ -55,27 +152,22 @@ U_tilde = U + N(0, noise_std_U)
 
 **Critical relationship**:
 ```
-expl_scale = 0.01, h0 = 1.0  →  initial noise_std = 0.1  (low exploration)
-expl_scale = 0.1,  h0 = 1.0  →  initial noise_std = 0.316 (moderate) ✓ CHOSEN
-expl_scale = 1.0,  h0 = 1.0  →  initial noise_std = 1.0  (high exploration)
-expl_scale = 1.0,  h0 = 0.001→  initial noise_std = 31.6 (CHAOS!)
+expl_scale = 0.0001, h0 = 0.1  →  initial noise_std = 0.032 (minimal, warm-start) ✓ CHOSEN (warm-start)
+expl_scale = 0.001,  h0 = 0.1  →  initial noise_std = 0.1   (moderate, online) ✓ CHOSEN (online)
+expl_scale = 0.01,   h0 = 0.1  →  initial noise_std = 0.316 (high exploration)
+expl_scale = 1.0,    h0 = 0.1  →  initial noise_std = 3.16  (very high)
 ```
 
 **Relationship to logits and weights**:
 - Logits `z = U @ c + b` initially O(noise_std) since U~noise
-- With `noise_std = 0.316` and context features O(1):
-  - Logits `z ~ N(0, 0.316)` → range approximately [-1, 1]
-  - After temperature `z/tau = z/10` → range [-0.1, 0.1]
-  - softmax([-0.1, 0.05, 0.1, ...]) ≈ [0.15, 0.17, 0.18, ...] (near uniform)
+- With `noise_std = 0.1` and context features O(1):
+  - Logits `z ~ N(0, 0.1)` → range approximately [-0.3, 0.3]
+  - After temperature `z/tau = z/2` → range [-0.15, 0.15]
+  - softmax([-0.15, 0.05, 0.1, ...]) ≈ moderate variation around uniform
 
-- With `noise_std = 31.6`:
-  - Logits `z ~ N(0, 31.6)` → range approximately [-100, 100]
-  - Even with `tau=10`: `z/10` → range [-10, 10]
-  - softmax([-10, 5, 8, ...]) ≈ [0.0001, 0.18, 0.82] (BIMODAL!)
-
-**Why 0.1?**
-- Keeps initial logits small O(0.3), preventing softmax from being too peaked
-- Allows meaningful exploration without drowning out learning
+**Why 0.001 for online, 0.0001 for warm-start?**
+- Keeps initial logits moderate, allowing meaningful Thompson sampling
+- Warm-start uses 10× less noise for deterministic learning from historical data
 - As model learns, `h_U` grows with squared gradients, reducing exploration naturally
 
 ---
@@ -93,25 +185,25 @@ noise_std = sqrt(expl_scale / h_U)
 
 **This is the CRITICAL parameter for initialization!**
 
-**Scale analysis**:
+**Scale analysis (with expl_scale=0.001)**:
 ```
-h0 = 0.001  →  noise_std = sqrt(0.1/0.001) = 10.0   (massive noise)
-h0 = 0.01   →  noise_std = sqrt(0.1/0.01)  = 3.16   (large noise)
-h0 = 0.1    →  noise_std = sqrt(0.1/0.1)   = 1.0    (moderate noise)
-h0 = 1.0    →  noise_std = sqrt(0.1/1.0)   = 0.316  (controlled noise) ✓ CHOSEN
-h0 = 10.0   →  noise_std = sqrt(0.1/10.0)  = 0.1    (low noise)
+h0 = 0.001  →  noise_std = sqrt(0.001/0.001) = 1.0   (massive noise)
+h0 = 0.01   →  noise_std = sqrt(0.001/0.01)  = 0.316 (large noise)
+h0 = 0.1    →  noise_std = sqrt(0.001/0.1)   = 0.1   (moderate noise) ✓ CHOSEN
+h0 = 1.0    →  noise_std = sqrt(0.001/1.0)   = 0.032 (low noise)
+h0 = 10.0   →  noise_std = sqrt(0.001/10.0)  = 0.01  (very low noise)
 ```
 
 **Relationship to learning**:
 - `h_U` accumulates squared gradients: `h_U = 0.999 * h_U + 0.001 * grad^2`
-- If gradients are O(1), after 100 steps: `h_U ≈ 1.0 + 0.1 = 1.1`
-- Noise decreases over time: `noise_std = sqrt(0.1 / 1.1) ≈ 0.3` (slightly less exploration)
+- If gradients are O(0.01-0.1), squared gradients are O(0.0001-0.01)
+- After many steps, `h_U` converges to average squared gradient magnitude
+- Noise decreases as `h_U` grows, naturally reducing exploration over time
 
-**Why 1.0 instead of 0.001?**
-- With `h0 = 0.001`, initial noise_std = 10.0 is **100x larger** than desired
-- Logits become O(10), softmax becomes extremely peaked regardless of tau/alpha
-- With `h0 = 1.0`, initial noise_std = 0.316 is reasonable
-- Model starts near-uniform and gradually learns structure from data
+**Why 0.1?**
+- With `h0 = 0.1`, initial noise_std = 0.1 provides moderate exploration
+- Logits remain O(0.1-0.3), preventing extreme peaked or flat softmax
+- Balances exploration (via noise) with learning (signal from data)
 
 ---
 
@@ -132,64 +224,48 @@ q_i = exp(z_i / tau) / sum(exp(z_j / tau))
 **Scale examples** (logits = [-1, 0, 0.5, 1, 0, -0.5]):
 ```
 tau = 1:   softmax → [0.04, 0.11, 0.18, 0.30, 0.11, 0.07]  (peaked at z=1)
-tau = 2:   softmax → [0.08, 0.13, 0.16, 0.21, 0.13, 0.10]  (moderate)
+tau = 2:   softmax → [0.08, 0.13, 0.16, 0.21, 0.13, 0.10]  (moderate) ✓ CHOSEN
 tau = 5:   softmax → [0.13, 0.16, 0.17, 0.19, 0.16, 0.14]  (flatter)
-tau = 10:  softmax → [0.15, 0.17, 0.17, 0.18, 0.17, 0.16]  (very flat) ✓ CHOSEN
+tau = 10:  softmax → [0.15, 0.17, 0.17, 0.18, 0.17, 0.16]  (very flat)
 tau = 20:  softmax → [0.16, 0.17, 0.17, 0.17, 0.17, 0.16]  (nearly uniform)
 ```
 
 **Intuition**:
-- Low tau (1-2): "Confident" - strongly favors highest logit
+- Low tau (1): "Confident" - strongly favors highest logit
+- Medium tau (2-5): "Balanced" - allows differentiation while maintaining diversity
 - High tau (10-20): "Uncertain" - hedges bets across all signals
 - tau → ∞: Always uniform (1/6 for each signal)
 
-**Why 10.0?**
-- At initialization with U=0, b=0: logits are O(noise_std) ≈ O(0.3)
-- With `tau=10`: tempered logits O(0.03) → softmax ≈ [0.166, 0.167, 0.167, ...]
-- Allows model to start near-uniform
-- Model can still learn preferences (as U grows, logits grow, softmax becomes more peaked)
-- After learning, if `z = [0, 0, 0, 5, 0, 0]` (one signal clearly best):
-  - `z/10 = [0, 0, 0, 0.5, 0, 0]`
-  - softmax ≈ [0.14, 0.14, 0.14, 0.21, 0.14, 0.14] (still diversified)
+**Why 2.0?**
+- Allows learned preferences to influence weights while preventing over-concentration
+- Balances exploitation (following learned preferences) with maintaining signal diversity
+- Works well with `alpha=0.3` mixing to ensure all signals remain influential
 
 ---
 
 ### `alpha` - Uniform Mixing Weight
 **Scale**: `0.0` to `1.0`
 
-**What it controls**: How much to mix softmax output with uniform distribution.
+**What it controls**: How much to mix softmax output with uniform distribution. **Prevents complete diminishing of any signal weight.**
 
 **Formula**: `w = (1 - alpha) * softmax(z/tau) + alpha * (1/num_signals)`
 
-**Relationship to final weights**:
-
-**Scale examples** (softmax output = [0.1, 0.15, 0.4, 0.2, 0.1, 0.05]):
+**Weight bounds (alpha=0.3)**:
 ```
-alpha = 0.0:   w = [0.10, 0.15, 0.40, 0.20, 0.10, 0.05]  (pure softmax, peaked)
-alpha = 0.2:   w = [0.11, 0.15, 0.35, 0.19, 0.11, 0.07]  (slight smoothing)
-alpha = 0.5:   w = [0.13, 0.16, 0.28, 0.18, 0.13, 0.11]  (significant smoothing) ✓ CHOSEN
-alpha = 0.8:   w = [0.15, 0.16, 0.21, 0.17, 0.15, 0.14]  (mostly uniform)
-alpha = 1.0:   w = [0.167, 0.167, 0.167, 0.167, 0.167, 0.167]  (always uniform)
+Min weight = 0.3 / 6 = 0.05  (5%)
+Max weight = 0.7 + 0.05 = 0.75 (75%)
 ```
 
-**Weight bounds**:
-```
-Min weight = alpha / num_signals = 0.5 / 6 ≈ 0.083
-Max weight = (1 - alpha) * 1.0 + alpha/num_signals = 0.5 + 0.083 ≈ 0.583
-```
-
-**Why 0.5?**
-- At initialization (softmax = uniform): `w = 0.5 * 1/6 + 0.5 * 1/6 = 1/6` (perfect uniform)
-- Even after learning, no signal can be ignored (min 8.3%) or completely dominate (max 58.3%)
-- Promotes portfolio approach: consider multiple signals, not just the "best" one
-- Reflects RTS curator values: balance multiple objectives (audience, diversity, etc.)
+**Why 0.3?**
+- Ensures all signals maintain minimum influence even when model heavily favors others
+- Allows meaningful differentiation while preventing complete dominance
 
 ---
 
 ### `ema_decay` - Exponential Moving Average Decay
 **Scale**: `0.9` to `0.9999`
 
-**What it controls**: How quickly Hessian approximation forgets old gradient information.
+**What it controls**: How quickly Hessian approximation adapts to gradient magnitude changes. **Extremely close to 1.0 because squared gradient updates are typically very small (≈1e-4 to 1e-6 scale)**, requiring slow accumulation.
 
 **Formula**: `h_U = ema_decay * h_U + (1 - ema_decay) * grad_U^2`
 
@@ -197,25 +273,16 @@ Max weight = (1 - alpha) * 1.0 + alpha/num_signals = 0.5 + 0.083 ≈ 0.583
 
 **Scale analysis**:
 ```
-ema_decay = 0.9    →  memory ≈ 10 updates  (fast adaptation, noisy)
-ema_decay = 0.99   →  memory ≈ 100 updates  (moderate)
-ema_decay = 0.999  →  memory ≈ 1000 updates (slow adaptation, smooth) ✓ CHOSEN
-ema_decay = 0.9999 →  memory ≈ 10000 updates (very slow)
+ema_decay = 0.9    →  memory ≈ 10 updates
+ema_decay = 0.99   →  memory ≈ 100 updates
+ema_decay = 0.999  →  memory ≈ 1000 updates (online) ✓ CHOSEN
+ema_decay = 0.9999 →  memory ≈ 10000 updates (warm-start) ✓ CHOSEN
 ```
 
-**Relationship to exploration decay**:
-- As gradients accumulate, `h_U` grows
-- Larger `h_U` → smaller exploration noise: `noise_std = sqrt(expl_scale / h_U)`
-- With `ema_decay = 0.999`:
-  - Initially: `h_U = 1.0`, `noise_std = 0.316`
-  - After 1000 updates with grad≈1: `h_U ≈ 2.0`, `noise_std ≈ 0.224` (less exploration)
-  - After 5000 updates: `h_U ≈ 5.0`, `noise_std ≈ 0.141` (even less)
-
-**Why 0.999?**
-- Warm-start has ~21,000 gradient steps (7000 samples × 3 epochs)
-- Want `h_U` to grow gradually over training, not jump immediately
-- Smooth exploration decay: start with moderate noise, end with less noise
-- Not too slow (0.9999 would barely change over 20k steps)
+**Why 0.999 for online, 0.9999 for warm-start?**
+- Gradients squared are O(1e-4 to 1e-6), accumulate very slowly
+- Higher decay = smoother curvature estimates = more stable exploration noise
+- Warm-start uses even higher decay for maximum stability across large batch
 
 ---
 
@@ -285,47 +352,21 @@ Random*1.0      O(5) + noise        O(0.5)          PEAKED             Bimodal e
 
 ---
 
-## Summary: Scale Relationships
+## Summary: Production Settings
 
-| Hyperparameter | Value | Controls | Scale Reasoning |
-|---------------|-------|----------|-----------------|
-| `lr` | 0.01 | Parameter update size | Need ~1000 steps to converge, have ~20k steps available |
-| `expl_scale` | 0.1 | Exploration noise variance | With h0=1.0, gives noise_std=0.316 (reasonable for O(1) logits) |
-| `h0` | 1.0 | Initial uncertainty | Makes initial noise O(0.3) not O(10), prevents bimodal initialization |
-| `tau` | 10.0 | Softmax peakedness | Logits/10 keeps softmax near uniform initially, allows learning |
-| `alpha` | 0.5 | Uniform mixing | Bounds weights to [0.08, 0.58], ensures diversification |
-| `ema_decay` | 0.999 | Gradient memory | Window of ~1000 steps, smooth exploration decay over training |
+| Hyperparameter | Online | Warm-Start | Reasoning |
+|---------------|--------|------------|-----------|
+| `lr` | 0.05 | 0.01 | Faster online adaptation vs stable offline learning |
+| `expl_scale` | 0.001 | 0.0001 | Thompson sampling vs deterministic learning |
+| `h0` | 0.1 | 0.1 | Moderate initial exploration |
+| `tau` | 2.0 | 2.0 | Balanced differentiation with diversity |
+| `alpha` | 0.3 | 0.3 | Prevents signal weight collapse (min 5%) |
+| `ema_decay` | 0.999 | 0.9999 | Slow accumulation for small squared gradients |
+| `weight_decay` | 1e-4 | 1e-4 | L2 regularization |
+| `gamma` (init) | 0.3 | 0.3 | Curator signal weight (changed from 0.6 in IL data generation) |
 
-**The key insight**: All scales are chosen relative to each other to ensure:
-1. Initial weights near 1/6 (uniform)
-2. Moderate exploration noise (not chaos)
-3. Gradual learning over warm-start (~1000-5000 steps to converge)
-4. Natural exploration decay as uncertainty reduces
-
----
-
-## Recommended Settings
-
-```python
-cts = ContextualThompsonSampler(
-    num_signals=6,
-    context_dim=context_dim,
-    lr=0.01,
-    expl_scale=0.1,
-    ema_decay=0.999,
-    h0=1.0,
-    tau=10.0,
-    alpha=0.5,
-    match_loss_weight=0.5,
-    random_state=42
-)
-
-# Zero initialization for uniform start
-cts.U = np.zeros_like(cts.U)
-cts.b = np.zeros_like(cts.b)
-```
-
-**Expected behavior**:
-- Initial weights: ~0.167 ± 0.05 for all signals (near uniform)
-- After warm-start (3 epochs, ~21k gradient steps): weights reflect learned preferences from data
-- Exploration noise decreases naturally as model gains confidence
+**Key insights**:
+1. Weight initialization uses `gamma=0.3` (vs 0.6 for IL training) to align with curator objectives
+2. Warm-start hyperparameters are lowered for stability across 7,206 samples
+3. All signals maintain minimum 5% influence via `alpha=0.3` mixing
+4. `ema_decay` near 1.0 due to small squared gradient scale (1e-4 to 1e-6)

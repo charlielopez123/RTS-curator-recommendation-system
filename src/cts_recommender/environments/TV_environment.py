@@ -194,8 +194,6 @@ class TVProgrammingEnvironment:
         movie_features = np.squeeze(np.array(features, dtype=np.float32))
         return movie_features
 
-
-
     def get_time_slot(self, hour: int) -> TimeSlot | None:
 
         if 6 <= hour < 14:
