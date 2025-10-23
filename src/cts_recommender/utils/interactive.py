@@ -64,7 +64,7 @@ def display_recommendations(
         print(f"[{i}] {movie['title']} ({movie.get('release_date', 'N/A')[:4]})")
         print(f"    ID: {rec['catalog_id']}")
         print(f"    Overall Score: {rec['score']:.4f}")
-        print(f"    Predicted Audience: {predicted_rt_m:.2f}% | Rights End: {rights_end_str}\n")
+        print(f"    Predicted Audience: {predicted_rt_m:.2f} | Rights End: {rights_end_str}\n")
 
         # Display signal contributions
         print("    Signal Contributions (weighted by CTS):")
