@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal, Optional, List
 
 from pydantic import AnyHttpUrl, BaseModel, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -31,6 +31,13 @@ class Settings(BaseSettings):
 
     # ---- reproducibility ----
     random_seed: int = 42
+
+    # ---- API server configuration ----
+    api_host: str = "127.0.0.1"  # localhost for dev, 0.0.0.0 for docker/prod
+    api_port: int = 8000
+    api_reload: bool = True  # Auto-reload on code changes (dev only)
+    api_workers: int = 1  # Number of uvicorn workers (increase for prod)
+    cors_origins: List[str] = ["*"]  # Allowed CORS origins (restrict in prod)
 
     model_config = SettingsConfigDict(
         env_file = ".env",

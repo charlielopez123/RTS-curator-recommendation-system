@@ -47,6 +47,8 @@ class ContextualThompsonSampler:
             weight_decay: L2 regularization strength (0 = no regularization)
             random_state: Random seed for reproducibility (None uses default seed)
         """
+        self.num_signals = num_signals
+        self.context_dim = context_dim
         self.random_state = random_state
         self.rng = get_reproducible_random_state(random_state)
         self.h0 = h0

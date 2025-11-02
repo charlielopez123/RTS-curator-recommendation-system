@@ -213,10 +213,10 @@ After applying all filtering rules:
    - Rule development and testing
    - Validation of filtering logic
 
-3. **Production Pipeline**: `src/cts_recommender/preprocessing/whatson_extraction.py` (TODO)
-   - Implement production-ready extraction
-   - Apply all filtering rules
-   - Export cleaned movie catalog
+3. **Production Pipeline**: `src/cts_recommender/preprocessing/whatson_extraction.py`
+   - Production-ready extraction
+   - Applies all filtering rules
+   - Exports cleaned movie catalog
 
 ### Usage Example
 
@@ -250,14 +250,6 @@ Rule 5 - Short duration: ~300 filtered (0 kept)
 ...
 ```
 
-## Future Improvements
-
-1. **Manual Review**: Flag edge cases for human review
-2. **Collection Whitelist**: Maintain a curated list of known series collections
-3. **NLP Classification**: Use description text to classify content type
-4. **External Validation**: Cross-reference with TMDB/IMDb to verify movies
-5. **Year Validation**: Filter out entries with invalid or missing production years
-
 ## Notes
 
 - The filtering is **conservative**: when in doubt, we exclude rather than include
@@ -265,8 +257,3 @@ Rule 5 - Short duration: ~300 filtered (0 kept)
 - The 35-minute threshold is a heuristic (typical TV episode: 20-50 min, movies: 60+ min)
 - `00:00:00` durations are treated as "unknown" rather than invalid
 - Generic collections like "Film" are allowed only if they pass duration and other checks
-
----
-
-**Last Updated**: 2025-10-03
-**Notebook**: `experiments/notebooks/whatson_data.ipynb`

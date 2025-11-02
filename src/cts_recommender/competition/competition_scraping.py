@@ -3,7 +3,7 @@ import zoneinfo
 from datetime import datetime, timedelta, date
 from typing import List, Dict, Optional, Union, Tuple
 from pathlib import Path
-import tqdm.auto as tqdm
+from tqdm.auto import tqdm
 import re
 
 from cts_recommender.competition import M6, TF1
@@ -31,9 +31,9 @@ class CompetitorDataScraper:
     def scrape_upcoming_schedules(self, days_ahead: int = 21):
         """Fetch exactly one XML per TV-week per channel, extract films."""
 
-        # Collect all TV‑week starts (Saturdays) 
+        # Collect all TV‑week starts (Saturdays)
         # Weeks defined as Saturday to Friday
-        tv_week_starts = self._available_tv_week_starts(days_ahead=days_ahead)
+        tv_week_starts = self.available_tv_week_starts(days_ahead=days_ahead)
         for channel in self.sessions.keys():
             self.scraped_schedules[channel] = {}
             for week_sat in tqdm(sorted(tv_week_starts), desc= f'Weeks for {channel}', leave = True):

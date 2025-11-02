@@ -146,11 +146,15 @@ APP_PROCESSED_DIR=data/processed        # Processed data location
 
 ## 📚 Documentation
 
-- **[CLI Reference](docs/CLI.md)**: All 5 CLI commands
+- **[CLI Reference](docs/CLI.md)**: All CLI commands
 - **[Pipeline Architecture](docs/PIPELINE.md)**: Data processing pipelines
-- **[WhatsOn Catalog](docs/WHATSON_CATALOG.md)**: Catalog extraction
-- **[Imitation Learning](docs/IMITATION_LEARNING.md)**: IL training data
-- **[Competition Scraping](docs/COMPETITION_SCRAPING.md)**: Competitor data
+- **[WhatsOn Catalog](docs/WHATSON_CATALOG.md)**: Catalog creation and deduplication
+- **[Imitation Learning](docs/IMITATION_LEARNING.md)**: IL training data extraction
+- **[Competition Scraping](docs/COMPETITION_SCRAPING.md)**: Competitor TV data
+- **[TMDB Enrichment](docs/TMDB_ENRICHMENT.md)**: TMDB matching consistency
+- **[Testing Guide](docs/TESTING.md)**: Test suite overview
+- **[CTS Hyperparameters](docs/CTS_HYPERPARAMETERS.md)**: Model configuration guide
+- **[Interactive Testing](docs/INTERACTIVE_TESTING.md)**: Interactive CTS testing tool
 
 ## 🧪 Development
 

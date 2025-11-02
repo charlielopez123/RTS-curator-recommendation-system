@@ -86,12 +86,15 @@ def match_title_to_catalog(
     use_tmdb_fallback (bool): Whether to use TMDB search if no catalog match
 
     Returns:
-    tuple: (catalog_id, tmdb_id) or (None, None) if no match
+    tuple: (catalog_id, tmdb_id) or (None, tmdb_id) if found in TMDB but not in catalog, or (None, None) if not found anywhere
     """
     if pd.isna(title) or not title.strip():
         return None, None
 
     normalized_title = text_cleaning.normalize(title.strip())
+
+    # Track TMDB ID found (even if not in catalog)
+    found_tmdb_id = None
 
     # Strategy 1: TMDB ID lookup (fastest and most reliable)
     if use_tmdb_fallback:
@@ -100,15 +103,16 @@ def match_title_to_catalog(
             tmdb_id = tmdb_api.find_best_match(title, known_runtime=0)
 
             if tmdb_id:
+                found_tmdb_id = tmdb_id  # Preserve TMDB ID
                 # Check if this TMDB ID exists in catalog
                 tmdb_id_str = str(tmdb_id)
                 if tmdb_id_str in catalog_df.index:
-                    logger.debug(f"TMDB ID match: '{title}' → catalog_id={tmdb_id_str}")
+                    logger.debug(f"✓ Catalog match via TMDB: '{title}' → catalog_id={tmdb_id_str}")
                     return tmdb_id_str, tmdb_id
                 else:
-                    logger.debug(f"TMDB found {tmdb_id} but not in catalog: '{title}', trying text matching...")
+                    logger.debug(f"✓ Found in TMDB (ID={tmdb_id}) but NOT in catalog: '{title}' - trying text matching...")
         except Exception as e:
-            logger.warning(f"TMDB search failed for '{title}': {e}, falling back to text matching...")
+            logger.warning(f"✗ TMDB search failed for '{title}': {e}, falling back to text matching...")
 
     # Strategy 2: Exact match on processed_title (for older/TV movies without TMDB)
     if 'processed_title' in catalog_df.columns:
@@ -116,7 +120,7 @@ def match_title_to_catalog(
             if pd.notna(row.get('processed_title')):
                 catalog_normalized = text_cleaning.normalize(row['processed_title'])
                 if normalized_title == catalog_normalized:
-                    logger.debug(f"Exact text match: '{title}' → catalog_id={catalog_id}")
+                    logger.debug(f"✓ Catalog match via exact text: '{title}' → catalog_id={catalog_id}")
                     return catalog_id, row.get('tmdb_id')
 
     # Strategy 3: Fuzzy match on title or best_title (for older/TV movies)
@@ -128,11 +132,16 @@ def match_title_to_catalog(
                 # Bidirectional substring match
                 if (normalized_title in catalog_normalized or
                     catalog_normalized in normalized_title):
-                    logger.debug(f"Fuzzy text match: '{title}' → catalog_id={catalog_id} (via {col})")
+                    logger.debug(f"✓ Catalog match via fuzzy text: '{title}' → catalog_id={catalog_id} (via {col})")
                     return catalog_id, row.get('tmdb_id')
 
-    logger.debug(f"No match found for: '{title}'")
-    return None, None
+    # Return with TMDB ID if found, even without catalog match
+    if found_tmdb_id:
+        logger.debug(f"✗ No catalog match for: '{title}' (not in WhatsOn catalog), but TMDB ID={found_tmdb_id} preserved")
+        return None, found_tmdb_id
+    else:
+        logger.debug(f"✗ No catalog match found for: '{title}' (not in WhatsOn catalog)")
+        return None, None
 
 
 def flatten_schedule(
@@ -176,7 +185,9 @@ def flatten_schedule(
 
     rows = []
     total_entries = 0
-    matched_entries = 0
+    matched_to_catalog = 0
+    found_tmdb_not_in_catalog = 0
+    not_found_anywhere = 0
 
     for channel, weeks in scraped_schedules.items():
         logger.info(f"Processing channel: {channel}")
@@ -204,8 +215,15 @@ def flatten_schedule(
                     use_tmdb_fallback=use_tmdb_fallback
                 )
 
+                # Track matching results
                 if catalog_id:
-                    matched_entries += 1
+                    matched_to_catalog += 1
+                elif tmdb_id:
+                    # Found in TMDB but not in catalog
+                    found_tmdb_not_in_catalog += 1
+                else:
+                    # Not found anywhere
+                    not_found_anywhere += 1
 
                 # Build row matching historical programming schema
                 # Initialize with None for all columns, then populate what we have
@@ -231,8 +249,11 @@ def flatten_schedule(
                 rows.append(row)
 
     logger.info(f"Processed {total_entries} competitor movie entries")
-    logger.info(f"Matched to catalog: {matched_entries} ({100*matched_entries/total_entries:.1f}%)")
-    logger.info(f"Unmatched: {total_entries - matched_entries}")
+    match_rate = (100 * matched_to_catalog / total_entries) if total_entries > 0 else 0.0
+    logger.info(f"✓ Matched to catalog: {matched_to_catalog} ({match_rate:.1f}%)")
+    logger.info(f"⚠ Found in TMDB but NOT in catalog: {found_tmdb_not_in_catalog} (movie exists but not available on RTS)")
+    logger.info(f"✗ Not found anywhere: {not_found_anywhere} (unknown movie)")
+    logger.info(f"Total unmatched to catalog: {found_tmdb_not_in_catalog + not_found_anywhere}")
 
     if not rows:
         logger.warning("No competitor data to flatten!")
