@@ -20,6 +20,8 @@ dist/
 
 # --- Competition related ---
 comp_constants.py
+competition_data/**
+!competition_data/.gitkeep
 
 # --- Data & models (keep small samples only) ---
 data/**
